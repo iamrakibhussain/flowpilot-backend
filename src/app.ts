@@ -3,7 +3,12 @@ import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
-import { getCorsOptions, getRateLimitOptions, parseTrustProxy } from './config/security.js';
+import {
+  getCorsOptions,
+  getRateLimitOptions,
+  getAuthRateLimitOptions,
+  parseTrustProxy,
+} from './config/security.js';
 import { requestIdMiddleware } from './common/middleware/request-id.js';
 import { notFoundHandler } from './common/middleware/not-found.js';
 import { errorHandler } from './common/middleware/error-handler.js';
@@ -38,9 +43,11 @@ export function createApp(options: AppOptions = { enableRateLimiting: true }): E
   // 6. Cookie parser
   app.use(cookieParser());
 
-  // 7. Rate limiter (optional in integration test runs)
+  // 7. Rate limiters (optional in integration test runs)
   if (options.enableRateLimiting) {
     app.use('/api', rateLimit(getRateLimitOptions()));
+    app.use('/api/v1/auth/login', rateLimit(getAuthRateLimitOptions()));
+    app.use('/api/v1/auth/register', rateLimit(getAuthRateLimitOptions()));
   }
 
   // 8. API v1 route mount

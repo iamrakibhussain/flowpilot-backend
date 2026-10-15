@@ -1,10 +1,17 @@
 export type UserRole = 'OWNER' | 'ADMIN' | 'MEMBER' | 'BILLING';
 
+export interface OrganizationMembershipSummary {
+  organizationId: string;
+  organizationName: string;
+  role: UserRole;
+}
+
 export interface AuthenticatedUser {
   id: string;
   email: string;
   name: string;
   role?: UserRole;
+  memberships?: OrganizationMembershipSummary[];
 }
 
 export interface TenantContext {
@@ -45,6 +52,8 @@ declare global {
       id?: string;
       user?: AuthenticatedUser;
       tenant?: TenantContext;
+      sessionId?: string;
+      sessionToken?: string;
     }
   }
 }

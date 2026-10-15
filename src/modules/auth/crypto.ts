@@ -1,4 +1,5 @@
 import { hash, verify } from '@node-rs/argon2';
+import crypto from 'node:crypto';
 
 /**
  * Argon2id password hashing parameters adhering to OWASP recommendations.
@@ -27,4 +28,24 @@ export async function verifyPassword(hashString: string, plainText: string): Pro
   } catch {
     return false;
   }
+}
+
+/**
+ * Generates a high-entropy cryptographically secure random session token.
+ * 32 bytes (256 bits) encoded as a 64-character hexadecimal string.
+ */
+export function generateSessionToken(): string {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+/**
+ * Creates a deterministic SHA-256 hash of a raw session token.
+ * We store this hash in the database to prevent token theft in the event of database leaks,
+ * and compare hash-to-hash for O(1) indexed lookup without exposing raw tokens.
+ */
+export function hashSessionToken(token: string): string {
+  if (!token || typeof token !== 'string') {
+    throw new Error('Invalid token provided for hashing');
+  }
+  return crypto.createHash('sha256').update(token).digest('hex');
 }

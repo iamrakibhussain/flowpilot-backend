@@ -26,3 +26,21 @@ Security is implemented using a defense-in-depth model across transport, applica
 
 - **Session Transport**: FlowPilot utilizes secure, HTTP-only, SameSite cookies (`flowpilot_session`) to prevent client-side JavaScript access (XSS mitigation).
 - **Session Revocation**: Storing session metadata in the `Session` table allows immediate revocation upon password change, account suspension, or user logout.
+- **Token Hashing**: Raw session tokens are never stored in plaintext in the database. Tokens are hashed with SHA-256 before storage to protect active sessions against database exfiltration attacks.
+
+---
+
+## 4. Cross-Site Request Forgery (CSRF) Defense Strategy
+
+Because FlowPilot utilizes browser-managed session cookies (`flowpilot_session`), CSRF defense is implemented through four complementary layers:
+
+1. **SameSite Cookie Attribute**:
+   - In production, session cookies are issued with `SameSite=Strict` (and `SameSite=Lax` in local development). Browsers refuse to send `Strict` cookies on cross-origin requests, blocking drive-by cross-site request execution.
+2. **Strict Credentialed CORS Allowlist**:
+   - The Express CORS middleware strictly checks incoming `Origin` headers against the configured `CORS_ORIGIN` allowlist (`src/config/security.ts`). Wildcard `*` is explicitly disallowed with credentials. Requests from unauthorized origins are rejected with `403 Forbidden`.
+3. **Mandatory JSON Content-Type & Preflight Defense**:
+   - All state-changing endpoints (`POST`, `PUT`, `PATCH`, `DELETE`) require `Content-Type: application/json`. Standard browser HTML `<form action="...">` submissions cannot send `application/json` payloads without triggering a CORS preflight (`OPTIONS`) request, which unauthorized cross-origin sites cannot pass.
+4. **Mandatory Custom Header Verification**:
+   - Tenant-scoped operations enforce the `X-Organization-Id` header via `tenantContextMiddleware`. Custom headers cannot be attached by standard cross-site links or forms without triggering a CORS preflight check.
+5. **Session Invalidation on Logout**:
+   - Calling `/api/v1/auth/logout` invalidates the server-side session in the database and explicitly clears the client cookie, mitigating post-session replay risks.

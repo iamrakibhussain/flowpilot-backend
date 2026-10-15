@@ -15,13 +15,18 @@
 
 ---
 
-## Milestone 2: Authentication & Session Engine (NEXT MILESTONE)
+## Milestone 2: Authentication & Session Engine (COMPLETE)
 
-- [ ] User registration with transactional organization provisioning
-- [ ] User login with Argon2id verification and session creation
-- [ ] Secure HTTP-only session cookie issuance
-- [ ] Session invalidation on logout and password rotation
-- [ ] Email verification workflow and password reset token handling
+- [x] User registration with transactional organization provisioning
+- [x] User login with Argon2id verification and session creation
+- [x] Secure HTTP-only session cookie issuance
+- [x] Session invalidation on logout and server-side revocation
+- [x] Authentication middleware and `/api/v1/auth/me` endpoint
+- [x] Organization membership verification & role authorization middleware
+- [x] Dedicated authentication route rate limiting
+- [x] CSRF defense strategy specification
+- [x] Live PostgreSQL integration testing (Registration, Login, Me, Logout, Cross-Tenant Isolation)
+- [ ] Email verification workflow and password reset token handling (Deferred to Notification milestone)
 
 ---
 
