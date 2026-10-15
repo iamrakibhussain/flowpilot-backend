@@ -60,6 +60,23 @@ export function getRateLimitOptions(): Partial<RateLimitOptions> {
   };
 }
 
+export function getAuthRateLimitOptions(): Partial<RateLimitOptions> {
+  return {
+    windowMs: 15 * 60 * 1000, // 15 minutes window
+    max: 15, // Maximum 15 attempts per 15 minutes per IP
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: {
+        code: 'RATE_LIMITED',
+        message: 'Too many authentication attempts, please try again later.',
+        status: 429,
+      },
+    },
+  };
+}
+
 export function getSessionCookieOptions(): CookieOptions {
   const isProd = env.NODE_ENV === 'production';
   return {
@@ -68,5 +85,15 @@ export function getSessionCookieOptions(): CookieOptions {
     sameSite: isProd ? 'strict' : 'lax',
     path: '/',
     maxAge: env.SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
+  };
+}
+
+export function getClearSessionCookieOptions(): CookieOptions {
+  const isProd = env.NODE_ENV === 'production';
+  return {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? 'strict' : 'lax',
+    path: '/',
   };
 }
