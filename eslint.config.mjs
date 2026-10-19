@@ -16,6 +16,12 @@ export default tseslint.config(
     },
   },
   {
+    files: ['tests/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
+  {
     ignores: ['dist/**', 'node_modules/**', 'coverage/**', '*.d.ts'],
   },
 );

@@ -7,7 +7,12 @@ export async function authenticate(
   _res: Response,
   next: NextFunction,
 ): Promise<void> {
-  const token = req.cookies?.flowpilot_session;
+  // Support both HttpOnly cookie and Bearer header for robust security across clients
+  let token = req.cookies?.flowpilot_session;
+
+  if (!token && req.headers.authorization?.startsWith('Bearer ')) {
+    token = req.headers.authorization.slice(7).trim();
+  }
 
   if (!token || typeof token !== 'string') {
     return next(new UnauthorizedError('Authentication required'));

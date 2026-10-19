@@ -28,16 +28,19 @@ enum OrganizationStatus {
 }
 
 model User {
-  id           String       @id @default(uuid())
-  email        String       @unique
-  name         String
-  passwordHash String?      @map("password_hash")
-  status       UserStatus   @default(ACTIVE)
-  createdAt    DateTime     @default(now()) @map("created_at")
-  updatedAt    DateTime     @updatedAt @map("updated_at")
+  id                     String                  @id @default(uuid())
+  email                  String                  @unique
+  name                   String
+  passwordHash           String?                 @map("password_hash")
+  status                 UserStatus              @default(ACTIVE)
+  emailVerifiedAt        DateTime?               @map("email_verified_at")
+  createdAt              DateTime                @default(now()) @map("created_at")
+  updatedAt              DateTime                @updatedAt @map("updated_at")
 
-  memberships  Membership[]
-  sessions     Session[]
+  memberships            Membership[]
+  sessions               Session[]
+  passwordResetTokens    PasswordResetToken[]
+  emailVerificationCodes EmailVerificationCode[]
 
   @@map("users")
 }
@@ -87,4 +90,33 @@ model Session {
   @@index([userId])
   @@index([expiresAt])
   @@map("sessions")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+model EmailVerificationCode {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  codeHash  String   @map("code_hash")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("email_verification_codes")
 }

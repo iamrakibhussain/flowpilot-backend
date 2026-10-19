@@ -145,4 +145,45 @@ describe('Tenant Authorization & Cross-Organization Boundary Enforcement', () =>
     expect(res.body.success).toBe(true);
     expect(res.body.data.tenant.role).toBe('OWNER');
   });
+
+  it('returns HTTP 403 Forbidden when target organization is suspended or archived', async () => {
+    const app = express();
+    app.use(express.json());
+
+    app.use((req, _res, next) => {
+      req.user = {
+        id: 'usr-charlie',
+        email: 'charlie@suspended.test',
+        name: 'Charlie Member',
+        memberships: [
+          {
+            organizationId: targetOrgId,
+            organizationName: 'Suspended Org',
+            role: 'OWNER',
+            status: 'SUSPENDED',
+          },
+        ],
+      };
+      next();
+    });
+
+    app.get(
+      '/api/v1/tenant-resource',
+      tenantContextMiddleware({ requireMembershipVerification: true }),
+      (req: Request, res: Response) => {
+        sendSuccess(res, { tenant: req.tenant });
+      },
+    );
+
+    app.use(errorHandler);
+
+    const res = await request(app)
+      .get('/api/v1/tenant-resource')
+      .set('X-Organization-Id', targetOrgId);
+
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.code).toBe('FORBIDDEN');
+    expect(res.body.error.message).toContain('This organization is suspended or archived');
+  });
 });

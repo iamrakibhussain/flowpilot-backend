@@ -4,6 +4,11 @@ import {
   verifyPassword,
   generateSessionToken,
   hashSessionToken,
+  isCommonPassword,
+  normalizePassword,
+  timingSafeCompare,
+  DUMMY_ARGON2_HASH,
+  isValidSessionTokenFormat,
 } from '../../src/modules/auth/crypto.js';
 
 describe('Argon2id Secure Password Hashing', () => {
@@ -30,9 +35,39 @@ describe('Argon2id Secure Password Hashing', () => {
     await expect(hashPassword('short')).rejects.toThrow(/at least 8 characters/);
   });
 
+  it('throws an error for passwords exceeding 128 characters', async () => {
+    const longPassword = 'A'.repeat(129) + '1a!';
+    await expect(hashPassword(longPassword)).rejects.toThrow(/cannot exceed 128 characters/);
+  });
+
   it('returns false when verifying with empty hash or empty password', async () => {
     expect(await verifyPassword('', 'password123')).toBe(false);
     expect(await verifyPassword('$argon2id$invalid', '')).toBe(false);
+  });
+
+  it('executes timing mitigation dummy Argon2id hash verification safely', async () => {
+    expect(DUMMY_ARGON2_HASH.startsWith('$argon2id$')).toBe(true);
+    const result = await verifyPassword(DUMMY_ARGON2_HASH, 'attempted-password-123');
+    expect(result).toBe(false);
+  });
+
+  it('normalizes unicode representations to prevent homoglyph attacks', () => {
+    const deconstructed = 'e\u0301'; // é as e + combining acute accent
+    const composed = 'é';
+    expect(normalizePassword(deconstructed)).toBe(normalizePassword(composed));
+  });
+
+  it('identifies commonly breached passwords', () => {
+    expect(isCommonPassword('password')).toBe(true);
+    expect(isCommonPassword('12345678')).toBe(true);
+    expect(isCommonPassword('admin123')).toBe(true);
+    expect(isCommonPassword('UniqueSecureP@ssword2026!')).toBe(false);
+  });
+
+  it('performs constant-time string comparison', () => {
+    expect(timingSafeCompare('secret-token-123', 'secret-token-123')).toBe(true);
+    expect(timingSafeCompare('secret-token-123', 'secret-token-456')).toBe(false);
+    expect(timingSafeCompare('short', 'longer-string')).toBe(false);
   });
 });
 
@@ -59,5 +94,43 @@ describe('Session Token Crypto Utilities', () => {
 
   it('throws error when hashing empty or invalid token', () => {
     expect(() => hashSessionToken('')).toThrow(/Invalid token provided/);
+  });
+
+  describe('Session Token Format Validation (isValidSessionTokenFormat)', () => {
+    it('approves standard 64-character hex session tokens', () => {
+      const validToken = generateSessionToken();
+      expect(isValidSessionTokenFormat(validToken)).toBe(true);
+    });
+
+    it('approves tokens with safe length between 16 and 128 characters', () => {
+      expect(isValidSessionTokenFormat('1234567890abcdef1234')).toBe(true);
+      expect(isValidSessionTokenFormat('a'.repeat(128))).toBe(true);
+    });
+
+    it('rejects tokens shorter than 16 characters', () => {
+      expect(isValidSessionTokenFormat('short-token')).toBe(false);
+      expect(isValidSessionTokenFormat('')).toBe(false);
+    });
+
+    it('rejects tokens longer than 128 characters (DoS mitigation)', () => {
+      expect(isValidSessionTokenFormat('a'.repeat(129))).toBe(false);
+      expect(isValidSessionTokenFormat('a'.repeat(1000))).toBe(false);
+    });
+
+    it('rejects tokens containing whitespace, control characters, or injection delimiters', () => {
+      expect(isValidSessionTokenFormat('token with spaces in between')).toBe(false);
+      expect(isValidSessionTokenFormat('token\x00withnullbyte')).toBe(false);
+      expect(isValidSessionTokenFormat('token\r\nwithnewline')).toBe(false);
+      expect(isValidSessionTokenFormat('<script>alert(1)</script>12345')).toBe(false);
+      expect(isValidSessionTokenFormat('"quotedtoken1234567"')).toBe(false);
+      expect(isValidSessionTokenFormat("'singlequoted12345'")).toBe(false);
+    });
+
+    it('rejects non-string inputs', () => {
+      expect(isValidSessionTokenFormat(null)).toBe(false);
+      expect(isValidSessionTokenFormat(undefined)).toBe(false);
+      expect(isValidSessionTokenFormat(1234567890123456)).toBe(false);
+      expect(isValidSessionTokenFormat({})).toBe(false);
+    });
   });
 });

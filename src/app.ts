@@ -5,8 +5,12 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import {
   getCorsOptions,
+  getAllowedOrigins,
   getRateLimitOptions,
   getAuthRateLimitOptions,
+  getEmailDispatchRateLimitOptions,
+  getVerificationRateLimitOptions,
+  getPasswordActionRateLimitOptions,
   parseTrustProxy,
 } from './config/security.js';
 import { requestIdMiddleware } from './common/middleware/request-id.js';
@@ -36,18 +40,79 @@ export function createApp(options: AppOptions = { enableRateLimiting: true }): E
   // 4. CORS protection
   app.use(cors(getCorsOptions()));
 
-  // 5. Body parsers with safe payload limits
-  app.use(express.json({ limit: '100kb' }));
-  app.use(express.urlencoded({ extended: true, limit: '100kb' }));
+  // 5. Enforce Content-Type & Referer origin validation for state-changing requests (Anti-CSRF defense-in-depth)
+  app.use((req, res, next) => {
+    const method = req.method.toUpperCase();
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      // Defense-in-depth: If Origin is absent but Referer is present on mutation requests, ensure Referer origin is trusted
+      const referer = req.headers.referer;
+      if (!req.headers.origin && referer) {
+        try {
+          const refererOrigin = new URL(referer).origin;
+          const allowed = getAllowedOrigins();
+          if (!allowed.includes(refererOrigin)) {
+            res.status(403).json({
+              success: false,
+              error: {
+                code: 'FORBIDDEN',
+                message: `Referer origin '${refererOrigin}' is not allowed by FlowPilot security policy`,
+                status: 403,
+              },
+            });
+            return;
+          }
+        } catch {
+          res.status(403).json({
+            success: false,
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Malformed Referer header rejected',
+              status: 403,
+            },
+          });
+          return;
+        }
+      }
 
-  // 6. Cookie parser
+      const contentLength = req.headers['content-length'];
+      const transferEncoding = req.headers['transfer-encoding'];
+      const hasBody =
+        (contentLength !== undefined && contentLength !== '0') || Boolean(transferEncoding);
+      if (hasBody) {
+        const contentType = req.headers['content-type'];
+        if (!contentType || !contentType.toLowerCase().includes('application/json')) {
+          res.status(415).json({
+            success: false,
+            error: {
+              code: 'UNSUPPORTED_MEDIA_TYPE',
+              message: 'Content-Type must be application/json for request payloads',
+              status: 415,
+            },
+          });
+          return;
+        }
+      }
+    }
+    next();
+  });
+
+  // 6. JSON body parser with strict 100kb payload limit (urlencoded parser removed to prevent cross-origin form attacks)
+  app.use(express.json({ limit: '100kb' }));
+
+  // 7. Cookie parser
   app.use(cookieParser());
 
-  // 7. Rate limiters (optional in integration test runs)
+  // 8. Granular rate limiters (disabled in unit/integration tests via options)
   if (options.enableRateLimiting) {
     app.use('/api', rateLimit(getRateLimitOptions()));
     app.use('/api/v1/auth/login', rateLimit(getAuthRateLimitOptions()));
     app.use('/api/v1/auth/register', rateLimit(getAuthRateLimitOptions()));
+    app.use('/api/v1/auth/forgot-password', rateLimit(getEmailDispatchRateLimitOptions()));
+    app.use('/api/v1/auth/send-verification', rateLimit(getEmailDispatchRateLimitOptions()));
+    app.use('/api/v1/auth/verify-email', rateLimit(getVerificationRateLimitOptions()));
+    app.use('/api/v1/auth/reset-password', rateLimit(getPasswordActionRateLimitOptions()));
+    app.use('/api/v1/auth/change-password', rateLimit(getPasswordActionRateLimitOptions()));
+    app.use('/api/v1/auth/account', rateLimit(getPasswordActionRateLimitOptions()));
   }
 
   // 8. API v1 route mount

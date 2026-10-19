@@ -3,6 +3,7 @@ import request from 'supertest';
 import { getTestApp } from '../helpers/test-app.js';
 import { prisma } from '../../src/database/prisma.js';
 import { hashPassword } from '../../src/modules/auth/crypto.js';
+import { EmailService } from '../../src/common/email/email.service.js';
 
 describe('Authentication & Session Engine (Integration)', () => {
   const app = getTestApp();
@@ -48,6 +49,10 @@ describe('Authentication & Session Engine (Integration)', () => {
         updatedAt: new Date(),
       };
 
+      vi.spyOn(prisma.emailVerificationCode, 'deleteMany').mockResolvedValue({ count: 0 });
+      vi.spyOn(prisma.emailVerificationCode, 'create').mockResolvedValue({} as any);
+      vi.spyOn(EmailService, 'sendEmailVerificationCode').mockResolvedValue(true);
+
       vi.spyOn(prisma, '$transaction').mockImplementation(async (callback) => {
         return callback({
           user: { create: vi.fn().mockResolvedValue(mockUser) },
@@ -80,6 +85,7 @@ describe('Authentication & Session Engine (Integration)', () => {
         name: 'Existing',
         passwordHash: 'hash',
         status: 'ACTIVE',
+        emailVerifiedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -101,6 +107,39 @@ describe('Authentication & Session Engine (Integration)', () => {
       expect(res.body.success).toBe(false);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
       expect(res.body.error.details.password).toBeDefined();
+    });
+
+    it('returns HTTP 422 when registering with a known common password', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/register')
+        .send({ ...validRegisterPayload, password: 'Password123' });
+
+      expect(res.status).toBe(422);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.details.password[0]).toContain('too common');
+    });
+
+    it('returns HTTP 422 when password lacks uppercase or number', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/register')
+        .send({ ...validRegisterPayload, password: 'alllowercasepassword!' });
+
+      expect(res.status).toBe(422);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.details.password).toBeDefined();
+    });
+
+    it('returns HTTP 422 when name contains illegal control characters', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/register')
+        .send({ ...validRegisterPayload, name: 'Malicious\x00User' });
+
+      expect(res.status).toBe(422);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.details.name).toBeDefined();
     });
   });
 
@@ -190,6 +229,7 @@ describe('Authentication & Session Engine (Integration)', () => {
       expect(res.status).toBe(401);
       expect(res.body.success).toBe(false);
       expect(res.body.error.code).toBe('UNAUTHORIZED');
+      expect(res.body.error.message).toBe('Invalid email or password');
     });
 
     it('returns HTTP 403 when user status is SUSPENDED or DEACTIVATED', async () => {
@@ -237,6 +277,19 @@ describe('Authentication & Session Engine (Integration)', () => {
       expect(res.status).toBe(401);
       expect(res.body.success).toBe(false);
       expect(res.body.error.code).toBe('UNAUTHORIZED');
+    });
+
+    it('returns HTTP 401 and fast-rejects malformed session token without querying database', async () => {
+      const sessionFindSpy = vi.spyOn(prisma.session, 'findUnique');
+
+      const res = await request(app)
+        .get('/api/v1/auth/me')
+        .set('Cookie', ['flowpilot_session=short']);
+
+      expect(res.status).toBe(401);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('UNAUTHORIZED');
+      expect(sessionFindSpy).not.toHaveBeenCalled();
     });
 
     it('returns HTTP 200 with user profile and memberships for valid session', async () => {
@@ -288,7 +341,7 @@ describe('Authentication & Session Engine (Integration)', () => {
   });
 
   describe('POST /api/v1/auth/logout', () => {
-    it('invalidates server-side session and clears cookie', async () => {
+    it('invalidates server-side session, sends Clear-Site-Data, and clears cookie', async () => {
       const deleteManySpy = vi
         .spyOn(prisma.session, 'deleteMany')
         .mockResolvedValueOnce({ count: 1 });
@@ -301,12 +354,36 @@ describe('Authentication & Session Engine (Integration)', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data.message).toBe('Logged out successfully');
       expect(deleteManySpy).toHaveBeenCalled();
+      expect(res.headers['clear-site-data']).toBe('"cookies", "storage"');
 
       // Cookie should be expired / cleared
       const cookies = res.headers['set-cookie'] as unknown as string[] | undefined;
       expect(
         cookies?.some((c) => c.includes('flowpilot_session=;') || c.includes('Max-Age=0')),
       ).toBe(true);
+    });
+
+    it('revokes all user sessions when allDevices is true', async () => {
+      const findUniqueSpy = vi
+        .spyOn(prisma.session, 'findUnique')
+        .mockResolvedValueOnce({ userId: 'usr-target-all' } as any);
+      const deleteManySpy = vi
+        .spyOn(prisma.session, 'deleteMany')
+        .mockResolvedValueOnce({ count: 3 });
+
+      const res = await request(app)
+        .post('/api/v1/auth/logout')
+        .set('Cookie', ['flowpilot_session=token-valid-1234567890'])
+        .send({ allDevices: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.message).toBe('All sessions logged out successfully');
+      expect(findUniqueSpy).toHaveBeenCalled();
+      expect(deleteManySpy).toHaveBeenCalledWith({
+        where: { userId: 'usr-target-all' },
+      });
+      expect(res.headers['clear-site-data']).toBe('"cookies", "storage"');
     });
   });
 });

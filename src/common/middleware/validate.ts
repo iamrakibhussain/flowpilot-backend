@@ -1,11 +1,11 @@
 import { Request, Response, NextFunction, RequestHandler } from 'express';
-import { AnyZodObject, ZodError } from 'zod';
+import { ZodTypeAny, ZodError } from 'zod';
 import { ValidationError } from '../errors/app-error.js';
 
 export interface RequestValidationSchemas {
-  params?: AnyZodObject;
-  query?: AnyZodObject;
-  body?: AnyZodObject;
+  params?: ZodTypeAny;
+  query?: ZodTypeAny;
+  body?: ZodTypeAny;
 }
 
 export function validateRequest(schemas: RequestValidationSchemas): RequestHandler {

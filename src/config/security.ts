@@ -14,11 +14,15 @@ export function parseTrustProxy(val: string): boolean | number | string {
   return trimmed;
 }
 
-export function getCorsOptions(allowedOriginsString = env.CORS_ORIGIN): CorsOptions {
-  const allowedOrigins = allowedOriginsString
+export function getAllowedOrigins(allowedOriginsString = env.CORS_ORIGIN): string[] {
+  return allowedOriginsString
     .split(',')
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0);
+}
+
+export function getCorsOptions(allowedOriginsString = env.CORS_ORIGIN): CorsOptions {
+  const allowedOrigins = getAllowedOrigins(allowedOriginsString);
 
   if (allowedOrigins.includes('*')) {
     throw new Error("Wildcard '*' origin is not permitted with credentialed CORS requests");
@@ -71,6 +75,57 @@ export function getAuthRateLimitOptions(): Partial<RateLimitOptions> {
       error: {
         code: 'RATE_LIMITED',
         message: 'Too many authentication attempts, please try again later.',
+        status: 429,
+      },
+    },
+  };
+}
+
+export function getEmailDispatchRateLimitOptions(): Partial<RateLimitOptions> {
+  return {
+    windowMs: 15 * 60 * 1000, // 15 minutes window
+    max: 5, // Maximum 5 email dispatches per 15 minutes per IP to prevent spam and SMTP exhaustion
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: {
+        code: 'RATE_LIMITED',
+        message: 'Too many email requests. Please wait a few minutes before trying again.',
+        status: 429,
+      },
+    },
+  };
+}
+
+export function getVerificationRateLimitOptions(): Partial<RateLimitOptions> {
+  return {
+    windowMs: 15 * 60 * 1000, // 15 minutes window
+    max: 10, // Maximum 10 verification attempts per 15 minutes per IP to prevent OTP brute-forcing
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: {
+        code: 'RATE_LIMITED',
+        message: 'Too many verification attempts, please try again later.',
+        status: 429,
+      },
+    },
+  };
+}
+
+export function getPasswordActionRateLimitOptions(): Partial<RateLimitOptions> {
+  return {
+    windowMs: 15 * 60 * 1000, // 15 minutes window
+    max: 10, // Maximum 10 password/security actions per 15 minutes per IP
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: {
+        code: 'RATE_LIMITED',
+        message: 'Too many sensitive security action requests, please try again later.',
         status: 429,
       },
     },

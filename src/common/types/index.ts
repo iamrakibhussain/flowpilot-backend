@@ -4,6 +4,7 @@ export interface OrganizationMembershipSummary {
   organizationId: string;
   organizationName: string;
   role: UserRole;
+  status?: string;
 }
 
 export interface AuthenticatedUser {
@@ -12,6 +13,8 @@ export interface AuthenticatedUser {
   name: string;
   role?: UserRole;
   memberships?: OrganizationMembershipSummary[];
+  isEmailVerified?: boolean;
+  emailVerifiedAt?: Date | null;
 }
 
 export interface TenantContext {
