@@ -2,7 +2,8 @@
 
 **Date**: 2026-10-19  
 **Assessment Authority**: Application Security Engineering  
-**Repositories Assessed**:  
+**Repositories Assessed**:
+
 - Frontend: `flowpilot` (Next.js 15, React 19, TypeScript, Tailwind CSS)
 - Backend: `flowpilot-backend` (Node.js 22, Express, Prisma ORM, PostgreSQL)
 
@@ -10,11 +11,12 @@
 
 ## A. Executive Summary
 
-A comprehensive, evidence-grounded security audit, code-level remediation, and adversarial verification was executed across both FlowPilot repositories. 
+A comprehensive, evidence-grounded security audit, code-level remediation, and adversarial verification was executed across both FlowPilot repositories.
 
 FlowPilot is a multi-tenant business operations SaaS designed for service-oriented organizations. This security mission audited and hardened the complete attack surface of the current application state, including authentication lifecycles, tenant context isolation boundaries, password hashing work factors, credential recovery flows, CSRF/CORS defenses, input validation, and transactional email security.
 
 ### Summary of What Was Audited
+
 - **12 production-mounted API routes** spanning health probes and authentication lifecycles.
 - **Tenant Context Middleware**: Fail-closed authorization, role enforcement (`OWNER`, `ADMIN`, `MEMBER`, `BILLING`), and cross-tenant boundary protections.
 - **Session management**: Argon2id hashing, cryptographically secure 256-bit tokens, SHA-256 token hashing, single-use enforcement, and multi-device session invalidation.
@@ -25,6 +27,7 @@ FlowPilot is a multi-tenant business operations SaaS designed for service-orient
 - **Supply chain**: Manifest and lockfile audits with both full `npm audit` and `npm audit --omit=dev`.
 
 ### Summary of Remediations Implemented
+
 - **12 concrete security defect areas (SEC-01 through SEC-12)** were resolved directly in source code with dedicated automated regression tests.
 - Zero plaintext secrets, session cookies, or verification codes are stored or logged.
 - Automated background pruning was implemented for expired sessions, reset tokens, and OTP codes.
@@ -34,6 +37,7 @@ FlowPilot is a multi-tenant business operations SaaS designed for service-orient
 - Test-only and mock routes were verified to be completely unreachable in the application, returning HTTP 404.
 
 ### Overall Verification Status
+
 - **Backend Test Suite**: **129 of 129 tests passed** across 14 test suites (**0 failures**).
 - **Backend Build & Type-Check**: `tsc --noEmit` (**0 errors**); `tsc -p tsconfig.build.json` (**clean `dist/` build**).
 - **Backend Linter & Formatter**: `eslint .` (**0 errors, 0 warnings**); `prettier --check .` (**Clean, all files match**).
@@ -46,20 +50,20 @@ FlowPilot is a multi-tenant business operations SaaS designed for service-orient
 
 ## B. Findings and Remediation Inventory
 
-| Finding ID | Severity | Affected File(s) | Root Cause | Implemented Remediation | Regression Test & Result |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **SEC-01** | Medium | `src/common/email/email.service.ts` | Dynamic user name interpolated directly into HTML email templates; unvalidated header inputs. | Context-aware HTML entity escaping applied to all user variables; CRLF sanitization rejects `\r` and `\n` in email headers. | `tests/integration/security-hardening.test.ts`<br>**PASS** (4 tests) |
-| **SEC-02** | High | `src/common/middleware/tenant-context.ts` | Tenant middleware permitted optional verification bypass if unconfigured; database drops could leave membership role context ambiguous. | Enforced `requireMembershipVerification: true` by default. Wrapped membership lookup in try/catch to fail closed with HTTP 403 `FORBIDDEN`. Role context cleared if unverified. | `tests/integration/security-hardening.test.ts`<br>**PASS** (2 tests) |
-| **SEC-03** | Medium | `src/config/security.ts`<br>`src/modules/auth/auth.routes.ts` | Sensitive authentication endpoints lacked fine-grained rate limiters against brute force and email spam. | Created dedicated rate limiters: `authRateLimiter` (10 req/15min) and `emailDispatchRateLimiter` (5 req/15min) mounted on login, password-reset, and email verification endpoints. | `tests/integration/security-hardening.test.ts`<br>**PASS** (1 test) |
-| **SEC-04** | Medium | `src/app.ts` | State-changing endpoints could theoretically accept alternate media types without triggering CORS preflights. | Enforced `Content-Type: application/json` on all state-changing methods (`POST`, `PUT`, `PATCH`, `DELETE`) carrying a body; rejects alternate media types with HTTP 415. | `tests/integration/security-hardening.test.ts`<br>**PASS** (4 tests) |
-| **SEC-05** | High | `src/common/logging/logger.ts` | Risk of accidental password or session token leakage in stdout/stderr server logs. | Implemented Pino sensitive field redaction covering passwords, password hashes, reset tokens, verification code hashes, session cookies, and authorization headers. | Live integration test logs inspected; all sensitive tokens redacted.<br>**PASS** |
-| **SEC-06** | High | `src/modules/auth/crypto.ts`<br>`src/modules/auth/auth.types.ts` | Need for standardized OWASP password hashing work factors and password complexity enforcement. | Adopted Argon2id (`memoryCost: 65536`, `timeCost: 3`, `parallelism: 4`) via `@node-rs/argon2`. Zod schemas enforce minimum 8 characters with uppercase, lowercase, and numbers. | `tests/unit/crypto.test.ts`<br>**PASS** (18 tests) |
-| **SEC-07** | High | `src/modules/auth/auth.service.ts`<br>`src/modules/auth/crypto.ts` | Reset tokens and verification codes stored in plaintext; lack of multi-device session invalidation on password change. | Tokens and codes are SHA-256 hashed before storage; time-limited (1h reset, 15m verification); single-use enforced via `usedAt`; password reset invalidates all active user sessions across all devices. | `tests/integration/password-reset-and-verification.test.ts`<br>**PASS** (13 tests) |
-| **SEC-08** | High | `src/modules/auth/auth.service.ts`<br>`src/modules/auth/auth.routes.ts` | Missing secure account deletion flow with authentication verification. | Implemented `deleteAccount` endpoint requiring password re-verification, invalidating all sessions, purging verification codes, and removing tenant memberships. | `tests/integration/auth.test.ts`<br>**PASS** (16 tests) |
-| **SEC-09** | Medium | `src/modules/auth/auth.service.ts`<br>`src/server.ts` | Stale expired sessions and used reset tokens accumulated indefinitely in PostgreSQL. | Implemented `AuthService.cleanupExpiredTokens()` running in a single `prisma.$transaction`. Scheduled automated hourly background purge with graceful process termination handling. | `tests/integration/security-hardening.test.ts`<br>**PASS** (1 test) |
-| **SEC-10** | Medium | `src/modules/auth/auth.service.ts` | Database-level lookup by code hash could introduce timing variations during validation. | Codes retrieved by `userId` and verified via `timingSafeCompare` (`crypto.timingSafeEqual`) on the SHA-256 code hash. | `tests/integration/security-hardening.test.ts`<br>**PASS** (2 tests) |
-| **SEC-11** | Medium | `src/app.ts`<br>`src/config/security.ts` | Missing validation for `Referer` headers on cross-origin mutation requests when `Origin` header is omitted. | Validates `Referer` origin against allowed origins; rejects unauthorized referers with HTTP 403 `FORBIDDEN`. Enforces Content-Type check on `DELETE` requests carrying a body. | `tests/integration/security-hardening.test.ts`<br>**PASS** (3 tests) |
-| **SEC-12** | Low | `flowpilot/src/app/(auth)/login/page.tsx`<br>`flowpilot/src/app/(auth)/verify-email/page.tsx` | Potential open redirect via `redirect` search param; verify-email page masked code errors as session errors. | Added `getSafeRedirectUrl` ensuring relative navigation (`/`) and blocking protocol-relative URLs (`//`) and URL schemes (`https://`). Differentiated code validation errors from session errors. | Frontend type-check & test suite.<br>**PASS** (48 tests) |
+| Finding ID | Severity | Affected File(s)                                                                              | Root Cause                                                                                                                              | Implemented Remediation                                                                                                                                                                                  | Regression Test & Result                                                           |
+| :--------- | :------- | :-------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------- |
+| **SEC-01** | Medium   | `src/common/email/email.service.ts`                                                           | Dynamic user name interpolated directly into HTML email templates; unvalidated header inputs.                                           | Context-aware HTML entity escaping applied to all user variables; CRLF sanitization rejects `\r` and `\n` in email headers.                                                                              | `tests/integration/security-hardening.test.ts`<br>**PASS** (4 tests)               |
+| **SEC-02** | High     | `src/common/middleware/tenant-context.ts`                                                     | Tenant middleware permitted optional verification bypass if unconfigured; database drops could leave membership role context ambiguous. | Enforced `requireMembershipVerification: true` by default. Wrapped membership lookup in try/catch to fail closed with HTTP 403 `FORBIDDEN`. Role context cleared if unverified.                          | `tests/integration/security-hardening.test.ts`<br>**PASS** (2 tests)               |
+| **SEC-03** | Medium   | `src/config/security.ts`<br>`src/modules/auth/auth.routes.ts`                                 | Sensitive authentication endpoints lacked fine-grained rate limiters against brute force and email spam.                                | Created dedicated rate limiters: `authRateLimiter` (10 req/15min) and `emailDispatchRateLimiter` (5 req/15min) mounted on login, password-reset, and email verification endpoints.                       | `tests/integration/security-hardening.test.ts`<br>**PASS** (1 test)                |
+| **SEC-04** | Medium   | `src/app.ts`                                                                                  | State-changing endpoints could theoretically accept alternate media types without triggering CORS preflights.                           | Enforced `Content-Type: application/json` on all state-changing methods (`POST`, `PUT`, `PATCH`, `DELETE`) carrying a body; rejects alternate media types with HTTP 415.                                 | `tests/integration/security-hardening.test.ts`<br>**PASS** (4 tests)               |
+| **SEC-05** | High     | `src/common/logging/logger.ts`                                                                | Risk of accidental password or session token leakage in stdout/stderr server logs.                                                      | Implemented Pino sensitive field redaction covering passwords, password hashes, reset tokens, verification code hashes, session cookies, and authorization headers.                                      | Live integration test logs inspected; all sensitive tokens redacted.<br>**PASS**   |
+| **SEC-06** | High     | `src/modules/auth/crypto.ts`<br>`src/modules/auth/auth.types.ts`                              | Need for standardized OWASP password hashing work factors and password complexity enforcement.                                          | Adopted Argon2id (`memoryCost: 65536`, `timeCost: 3`, `parallelism: 4`) via `@node-rs/argon2`. Zod schemas enforce minimum 8 characters with uppercase, lowercase, and numbers.                          | `tests/unit/crypto.test.ts`<br>**PASS** (18 tests)                                 |
+| **SEC-07** | High     | `src/modules/auth/auth.service.ts`<br>`src/modules/auth/crypto.ts`                            | Reset tokens and verification codes stored in plaintext; lack of multi-device session invalidation on password change.                  | Tokens and codes are SHA-256 hashed before storage; time-limited (1h reset, 15m verification); single-use enforced via `usedAt`; password reset invalidates all active user sessions across all devices. | `tests/integration/password-reset-and-verification.test.ts`<br>**PASS** (13 tests) |
+| **SEC-08** | High     | `src/modules/auth/auth.service.ts`<br>`src/modules/auth/auth.routes.ts`                       | Missing secure account deletion flow with authentication verification.                                                                  | Implemented `deleteAccount` endpoint requiring password re-verification, invalidating all sessions, purging verification codes, and removing tenant memberships.                                         | `tests/integration/auth.test.ts`<br>**PASS** (16 tests)                            |
+| **SEC-09** | Medium   | `src/modules/auth/auth.service.ts`<br>`src/server.ts`                                         | Stale expired sessions and used reset tokens accumulated indefinitely in PostgreSQL.                                                    | Implemented `AuthService.cleanupExpiredTokens()` running in a single `prisma.$transaction`. Scheduled automated hourly background purge with graceful process termination handling.                      | `tests/integration/security-hardening.test.ts`<br>**PASS** (1 test)                |
+| **SEC-10** | Medium   | `src/modules/auth/auth.service.ts`                                                            | Database-level lookup by code hash could introduce timing variations during validation.                                                 | Codes retrieved by `userId` and verified via `timingSafeCompare` (`crypto.timingSafeEqual`) on the SHA-256 code hash.                                                                                    | `tests/integration/security-hardening.test.ts`<br>**PASS** (2 tests)               |
+| **SEC-11** | Medium   | `src/app.ts`<br>`src/config/security.ts`                                                      | Missing validation for `Referer` headers on cross-origin mutation requests when `Origin` header is omitted.                             | Validates `Referer` origin against allowed origins; rejects unauthorized referers with HTTP 403 `FORBIDDEN`. Enforces Content-Type check on `DELETE` requests carrying a body.                           | `tests/integration/security-hardening.test.ts`<br>**PASS** (3 tests)               |
+| **SEC-12** | Low      | `flowpilot/src/app/(auth)/login/page.tsx`<br>`flowpilot/src/app/(auth)/verify-email/page.tsx` | Potential open redirect via `redirect` search param; verify-email page masked code errors as session errors.                            | Added `getSafeRedirectUrl` ensuring relative navigation (`/`) and blocking protocol-relative URLs (`//`) and URL schemes (`https://`). Differentiated code validation errors from session errors.        | Frontend type-check & test suite.<br>**PASS** (48 tests)                           |
 
 ---
 
@@ -69,22 +73,23 @@ FlowPilot is a multi-tenant business operations SaaS designed for service-orient
 
 Below is the exhaustive inventory of all 12 endpoints registered on the live Express application entry point via `v1Routes`:
 
-| Endpoint | Method | Auth Required | Tenant Required | Minimum Role | Resource Scope / Ownership | Protection Controls |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `/api/v1/health` | GET | No | No | None | System liveness | Public probe |
-| `/api/v1/health/ready` | GET | No | No | None | System readiness | Database probe via `prisma.$queryRaw` |
-| `/api/v1/auth/register` | POST | No | No | None | Creates User, Org, OWNER | Zod, 10 req/15min rate limit, Argon2id, atomic transaction |
-| `/api/v1/auth/login` | POST | No | No | None | Creates Session | Zod, 10 req/15min rate limit, Argon2id, HttpOnly SameSite cookie |
-| `/api/v1/auth/logout` | POST | No (Permissive) | No | None | Clears Session | Session table invalidation, cookie clearing |
-| `/api/v1/auth/forgot-password` | POST | No | No | None | User lookup | Zod, 5 req/15min rate limit, SHA-256 hashed token, email dispatch |
-| `/api/v1/auth/reset-password` | POST | No | No | None | Token validation | Zod, 10 req/15min rate limit, single-use, invalidates all sessions |
-| `/api/v1/auth/send-verification` | POST | Yes | No | Any Authenticated | Own user | 5 req/15min rate limit, SHA-256 hashed 6-digit OTP |
-| `/api/v1/auth/verify-email` | POST | Yes | No | Any Authenticated | Own user | Zod, 10 req/15min rate limit, timing-safe compare, atomic update |
-| `/api/v1/auth/change-password` | POST | Yes | No | Any Authenticated | Own user | Zod, 10 req/15min rate limit, Argon2id, security alert notification |
-| `/api/v1/auth/account` | DELETE | Yes | No | Any Authenticated | Own account | Zod, password re-authentication, full session purge |
-| `/api/v1/auth/me` | GET | Yes | No | Any Authenticated | Own user & memberships | Session authentication, user existence check |
+| Endpoint                         | Method | Auth Required   | Tenant Required | Minimum Role      | Resource Scope / Ownership | Protection Controls                                                 |
+| :------------------------------- | :----- | :-------------- | :-------------- | :---------------- | :------------------------- | :------------------------------------------------------------------ |
+| `/api/v1/health`                 | GET    | No              | No              | None              | System liveness            | Public probe                                                        |
+| `/api/v1/health/ready`           | GET    | No              | No              | None              | System readiness           | Database probe via `prisma.$queryRaw`                               |
+| `/api/v1/auth/register`          | POST   | No              | No              | None              | Creates User, Org, OWNER   | Zod, 10 req/15min rate limit, Argon2id, atomic transaction          |
+| `/api/v1/auth/login`             | POST   | No              | No              | None              | Creates Session            | Zod, 10 req/15min rate limit, Argon2id, HttpOnly SameSite cookie    |
+| `/api/v1/auth/logout`            | POST   | No (Permissive) | No              | None              | Clears Session             | Session table invalidation, cookie clearing                         |
+| `/api/v1/auth/forgot-password`   | POST   | No              | No              | None              | User lookup                | Zod, 5 req/15min rate limit, SHA-256 hashed token, email dispatch   |
+| `/api/v1/auth/reset-password`    | POST   | No              | No              | None              | Token validation           | Zod, 10 req/15min rate limit, single-use, invalidates all sessions  |
+| `/api/v1/auth/send-verification` | POST   | Yes             | No              | Any Authenticated | Own user                   | 5 req/15min rate limit, SHA-256 hashed 6-digit OTP                  |
+| `/api/v1/auth/verify-email`      | POST   | Yes             | No              | Any Authenticated | Own user                   | Zod, 10 req/15min rate limit, timing-safe compare, atomic update    |
+| `/api/v1/auth/change-password`   | POST   | Yes             | No              | Any Authenticated | Own user                   | Zod, 10 req/15min rate limit, Argon2id, security alert notification |
+| `/api/v1/auth/account`           | DELETE | Yes             | No              | Any Authenticated | Own account                | Zod, password re-authentication, full session purge                 |
+| `/api/v1/auth/me`                | GET    | Yes             | No              | Any Authenticated | Own user & memberships     | Session authentication, user existence check                        |
 
 ### 2. Test-Only Routes Disposition
+
 The endpoints previously referenced in preliminary reports (`/api/v1/tenant/test-protected`, `/api/v1/tenant/test-admin`, `/api/v1/tenant/test-owner`, `/api/v1/tenant/test-bypass`, `/api/v1/test-tenant`, `/api/v1/tenant-resource`, `/api/v1/owner-only-resource`) are **test fixtures** defined solely inside test files (`tests/integration/tenant-authorization.test.ts` and `tests/integration/tenant-context.test.ts`) using isolated, ephemeral Express instances to validate `tenantContextMiddleware`.
 
 **They are NOT mounted on the production application.**
@@ -92,6 +97,7 @@ The endpoints previously referenced in preliminary reports (`/api/v1/tenant/test
 Regression tests in `tests/integration/not-found.test.ts` execute against the live application instance (`getTestApp()`) and verify that every request to these test-fixture paths, as well as `/api/v1/debug/*` and `/api/v1/test/*`, returns **HTTP 404 NOT_FOUND**.
 
 ### 3. Business Resource APIs Clarification
+
 Tenant-scoped business operations (Customers, Services, Appointments, Invoices) are designed in the architecture specifications and scheduled for implementation in Phase 2. They are **not currently implemented or mounted** in the Phase 1 backend, and no claim is made that unwritten business endpoints were audited.
 
 ---
@@ -101,6 +107,7 @@ Tenant-scoped business operations (Customers, Services, Appointments, Invoices) 
 Both repositories were audited using full `npm audit` and production-only `npm audit --omit=dev`.
 
 ### 1. Frontend Repository (`flowpilot`)
+
 - **`npm audit --omit=dev`**:
   - Exit Code: `0`
   - Result: **0 vulnerabilities found in production dependencies**.
@@ -111,6 +118,7 @@ Both repositories were audited using full `npm audit` and production-only `npm a
   - Risk Assessment: **Low development-only risk**. The vulnerability is restricted to build/lint time evaluation and does not affect the production runtime bundle.
 
 ### 2. Backend Repository (`flowpilot-backend`)
+
 - **`npm audit --omit=dev`**:
   - Exit Code: `1`
   - Findings: 3 high-severity advisories affecting `deepmerge-ts <8.0.0` via `@prisma/config` via `prisma`.
@@ -127,6 +135,7 @@ Both repositories were audited using full `npm audit` and production-only `npm a
 ## E. Verification Evidence & Exact Command Outputs
 
 ### 1. Backend Verification (`flowpilot-backend`)
+
 - **Unit & Integration Tests**:
   ```bash
   $ npm test
@@ -176,6 +185,7 @@ Both repositories were audited using full `npm audit` and production-only `npm a
   ```
 
 ### 2. Frontend Verification (`flowpilot`)
+
 - **Unit & Component Tests**:
   ```bash
   $ npm run test:unit
@@ -217,6 +227,7 @@ Both repositories were audited using full `npm audit` and production-only `npm a
   ```
 
 ### 3. Git Status & Sensitive File Inspection
+
 - `git ls-files .env .env.local`: Confirmed that `.env` and `.env.local` are **untracked** in both repositories.
 - `.env.example`: Inspected in both repositories; contains strictly safe placeholders.
 - `git diff`: Reviewed all modifications; zero hardcoded credentials, test bypasses, or weakened checks exist.
@@ -226,17 +237,17 @@ Both repositories were audited using full `npm audit` and production-only `npm a
 ## F. Remaining Risks and Production Prerequisites
 
 1. **Distributed Rate Limiting (Multi-Instance Deployments)**:
-   - *Status*: The current rate limiter uses an in-memory sliding window per process.
-   - *Production Prerequisite*: In a multi-replica container deployment behind a load balancer, attach a Redis instance (`rate-limit-redis`) to share rate-limiting state across nodes.
+   - _Status_: The current rate limiter uses an in-memory sliding window per process.
+   - _Production Prerequisite_: In a multi-replica container deployment behind a load balancer, attach a Redis instance (`rate-limit-redis`) to share rate-limiting state across nodes.
 2. **Multi-Factor Authentication (MFA / 2FA)**:
-   - *Status*: Not included in Phase 1 specifications.
-   - *Phase 2 Recommendation*: Implement TOTP/WebAuthn for administrative and billing actions.
+   - _Status_: Not included in Phase 1 specifications.
+   - _Phase 2 Recommendation_: Implement TOTP/WebAuthn for administrative and billing actions.
 3. **Database Migration Deployment**:
-   - *Status*: Migration file `20261018000000_add_password_reset_and_email_verification` is committed in `prisma/migrations`.
-   - *Production Prerequisite*: Execute `npx prisma migrate deploy` in the staging/production deployment pipeline before booting backend processes.
+   - _Status_: Migration file `20261018000000_add_password_reset_and_email_verification` is committed in `prisma/migrations`.
+   - _Production Prerequisite_: Execute `npx prisma migrate deploy` in the staging/production deployment pipeline before booting backend processes.
 4. **Reverse Proxy Configuration**:
-   - *Status*: Configured via `TRUST_PROXY` environment variable.
-   - *Production Prerequisite*: Set `TRUST_PROXY=1` (or specific CIDR) when running behind AWS ALB, Cloudflare, or NGINX to ensure accurate client IP extraction.
+   - _Status_: Configured via `TRUST_PROXY` environment variable.
+   - _Production Prerequisite_: Set `TRUST_PROXY=1` (or specific CIDR) when running behind AWS ALB, Cloudflare, or NGINX to ensure accurate client IP extraction.
 
 ---
 
@@ -246,6 +257,7 @@ Both repositories were audited using full `npm audit` and production-only `npm a
 
 **Justification**:  
 The foundation and authentication layers across both repositories exhibit production-grade security architecture:
+
 1. Multi-tenant isolation fails closed, and all test/debug routes are verified to return 404 on the live application.
 2. The endpoint inventory accurately accounts for all 12 registered routes with comprehensive authorization boundaries.
 3. 177 automated tests (129 backend + 48 frontend) pass cleanly with zero compiler errors, zero linter errors, and clean Prettier formatting.
