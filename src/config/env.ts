@@ -40,6 +40,16 @@ const baseEnvSchema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900000), // 15 mins
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(100),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  SMTP_HOST: z.string().default('smtp.gmail.com'),
+  SMTP_PORT: z.coerce.number().int().positive().default(465),
+  SMTP_SECURE: z
+    .string()
+    .transform((val) => val === 'true' || val === '1')
+    .default('true'),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  EMAIL_FROM: z.string().default('FlowPilot Security <noreply@flowpilot.io>'),
+  FRONTEND_URL: z.string().default('http://localhost:3000'),
 });
 
 const envSchema = baseEnvSchema.superRefine((data, ctx) => {

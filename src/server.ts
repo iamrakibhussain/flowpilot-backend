@@ -2,9 +2,11 @@ import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './common/logging/logger.js';
 import { disconnectDatabase } from './database/prisma.js';
+import { AuthService } from './modules/auth/auth.service.js';
 
 const app = createApp();
 
+// FlowPilot Server Entry Point — Production Deliverability Enabled
 const server = app.listen(env.PORT, env.HOST, () => {
   logger.info(
     {
@@ -16,12 +18,37 @@ const server = app.listen(env.PORT, env.HOST, () => {
   );
 });
 
+// Periodic maintenance: Purge expired tokens and sessions (runs every hour)
+const tokenCleanupInterval = setInterval(
+  () => {
+    AuthService.cleanupExpiredTokens()
+      .then((stats) => {
+        if (
+          stats.expiredSessions > 0 ||
+          stats.expiredResetTokens > 0 ||
+          stats.expiredVerificationCodes > 0
+        ) {
+          logger.info(
+            { event: 'maintenance.cleanup', stats },
+            'Automated cleanup purged expired tokens and sessions',
+          );
+        }
+      })
+      .catch((err) => {
+        logger.error({ err }, 'Failed to run automated token cleanup maintenance');
+      });
+  },
+  60 * 60 * 1000,
+);
+tokenCleanupInterval.unref();
+
 // Graceful shutdown handling
 let isShuttingDown = false;
 
 async function handleShutdown(signal: string): Promise<void> {
   if (isShuttingDown) return;
   isShuttingDown = true;
+  clearInterval(tokenCleanupInterval);
 
   logger.info({ signal }, 'Received termination signal. Starting graceful shutdown...');
 
