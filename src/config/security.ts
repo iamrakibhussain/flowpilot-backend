@@ -48,9 +48,10 @@ export function getCorsOptions(allowedOriginsString = env.CORS_ORIGIN): CorsOpti
 }
 
 export function getRateLimitOptions(): Partial<RateLimitOptions> {
+  const isDev = env.NODE_ENV === 'development';
   return {
     windowMs: env.RATE_LIMIT_WINDOW_MS,
-    max: env.RATE_LIMIT_MAX_REQUESTS,
+    max: isDev ? 10000 : env.RATE_LIMIT_MAX_REQUESTS,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: {
@@ -65,9 +66,10 @@ export function getRateLimitOptions(): Partial<RateLimitOptions> {
 }
 
 export function getAuthRateLimitOptions(): Partial<RateLimitOptions> {
+  const isDev = env.NODE_ENV === 'development';
   return {
     windowMs: 15 * 60 * 1000, // 15 minutes window
-    max: 15, // Maximum 15 attempts per 15 minutes per IP
+    max: isDev ? 1000 : 15, // Generous in development, strict in production
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: {
@@ -82,9 +84,10 @@ export function getAuthRateLimitOptions(): Partial<RateLimitOptions> {
 }
 
 export function getEmailDispatchRateLimitOptions(): Partial<RateLimitOptions> {
+  const isDev = env.NODE_ENV === 'development';
   return {
     windowMs: 15 * 60 * 1000, // 15 minutes window
-    max: 5, // Maximum 5 email dispatches per 15 minutes per IP to prevent spam and SMTP exhaustion
+    max: isDev ? 100 : 5, // Maximum 5 email dispatches in production to prevent spam
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: {
@@ -99,9 +102,10 @@ export function getEmailDispatchRateLimitOptions(): Partial<RateLimitOptions> {
 }
 
 export function getVerificationRateLimitOptions(): Partial<RateLimitOptions> {
+  const isDev = env.NODE_ENV === 'development';
   return {
     windowMs: 15 * 60 * 1000, // 15 minutes window
-    max: 10, // Maximum 10 verification attempts per 15 minutes per IP to prevent OTP brute-forcing
+    max: isDev ? 200 : 10, // Maximum 10 verification attempts in production
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: {
@@ -116,9 +120,10 @@ export function getVerificationRateLimitOptions(): Partial<RateLimitOptions> {
 }
 
 export function getPasswordActionRateLimitOptions(): Partial<RateLimitOptions> {
+  const isDev = env.NODE_ENV === 'development';
   return {
     windowMs: 15 * 60 * 1000, // 15 minutes window
-    max: 10, // Maximum 10 password/security actions per 15 minutes per IP
+    max: isDev ? 200 : 10, // Maximum 10 password/security actions in production
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: {
