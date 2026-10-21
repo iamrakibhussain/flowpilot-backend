@@ -21,19 +21,23 @@ export function tenantContextMiddleware(options: TenantContextOptions = {}) {
   const requireVerification = options.requireMembershipVerification ?? true;
 
   return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
-    const orgIdHeader = req.headers['x-organization-id'];
+    let rawOrgId = req.headers['x-organization-id'];
 
-    if (!orgIdHeader) {
-      return next(new BadRequestError('Missing required X-Organization-Id header'));
+    if (!rawOrgId || typeof rawOrgId !== 'string') {
+      if (req.user?.memberships?.[0]?.organizationId) {
+        rawOrgId = req.user.memberships[0].organizationId;
+      } else {
+        return next(new BadRequestError('Missing required X-Organization-Id header'));
+      }
     }
 
-    if (typeof orgIdHeader !== 'string' || !UUID_REGEX.test(orgIdHeader.trim())) {
+    const organizationId = rawOrgId.trim();
+
+    if (!UUID_REGEX.test(organizationId)) {
       return next(
         new BadRequestError('Invalid X-Organization-Id header format. Must be a valid UUID'),
       );
     }
-
-    const organizationId = orgIdHeader.trim();
 
     // If endpoint requires server-side membership authorization (enabled by default):
     if (requireVerification) {
