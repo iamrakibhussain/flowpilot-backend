@@ -1,3 +1,4 @@
+import { InvoiceStatus, AppointmentType } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import {
   DashboardMetricsResponse,
@@ -120,22 +121,19 @@ export class DashboardService {
 
     if (timeframe === '7d') {
       chartConfig = {
-        sparklineD: hasData
-          ? 'M0,18 Q20,15 40,11 T70,8 T100,2'
-          : 'M0,20 L100,20',
+        sparklineD: hasData ? 'M0,18 Q20,15 40,11 T70,8 T100,2' : 'M0,20 L100,20',
         sparklineFill: hasData
           ? 'M0,18 Q20,15 40,11 T70,8 T100,2 L100,25 L0,25 Z'
           : 'M0,20 L100,20 L100,25 L0,25 Z',
-        chartPathD: hasData
-          ? 'M10,135 Q70,110 140,85 T280,60 T400,35 T488,12'
-          : 'M10,140 L488,140',
+        chartPathD: hasData ? 'M10,135 Q70,110 140,85 T280,60 T400,35 T488,12' : 'M10,140 L488,140',
         chartAreaD: hasData
           ? 'M10,135 Q70,110 140,85 T280,60 T400,35 T488,12 L488,160 L10,160 Z'
           : 'M10,140 L488,140 L488,160 L10,160 Z',
         revenueGrowth: hasData ? '+8.2%' : '+0.0%',
-        clientsGrowth: totalClientsCount > 0
-          ? `+${Math.max(1, Math.round(totalClientsCount * 0.05))} this week`
-          : '0 this week',
+        clientsGrowth:
+          totalClientsCount > 0
+            ? `+${Math.max(1, Math.round(totalClientsCount * 0.05))} this week`
+            : '0 this week',
         xAxisLabels: [
           { full: 'Mon', short: 'M' },
           { full: 'Tue', short: 'T' },
@@ -205,22 +203,19 @@ export class DashboardService {
       const shortM0 = nameM0.slice(0, 3);
 
       chartConfig = {
-        sparklineD: hasData
-          ? 'M0,22 Q20,17 40,12 T70,8 T100,1'
-          : 'M0,20 L100,20',
+        sparklineD: hasData ? 'M0,22 Q20,17 40,12 T70,8 T100,1' : 'M0,20 L100,20',
         sparklineFill: hasData
           ? 'M0,22 Q20,17 40,12 T70,8 T100,1 L100,25 L0,25 Z'
           : 'M0,20 L100,20 L100,25 L0,25 Z',
-        chartPathD: hasData
-          ? 'M10,135 Q90,115 160,85 T330,55 T440,30 T488,15'
-          : 'M10,140 L488,140',
+        chartPathD: hasData ? 'M10,135 Q90,115 160,85 T330,55 T440,30 T488,15' : 'M10,140 L488,140',
         chartAreaD: hasData
           ? 'M10,135 Q90,115 160,85 T330,55 T440,30 T488,15 L488,160 L10,160 Z'
           : 'M10,140 L488,140 L488,160 L10,160 Z',
         revenueGrowth: hasData ? '+28.7%' : '+0.0%',
-        clientsGrowth: totalClientsCount > 0
-          ? `+${Math.max(1, Math.round(totalClientsCount * 0.15))} this quarter`
-          : '0 this quarter',
+        clientsGrowth:
+          totalClientsCount > 0
+            ? `+${Math.max(1, Math.round(totalClientsCount * 0.15))} this quarter`
+            : '0 this quarter',
         xAxisLabels: [
           { full: labelM2, short: shortM2 },
           { full: labelM1, short: shortM1 },
@@ -243,9 +238,10 @@ export class DashboardService {
           },
           {
             label: labelM0,
-            revenue: paidRevenue > 0
-              ? paidRevenue.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
-              : '$0.00',
+            revenue:
+              paidRevenue > 0
+                ? paidRevenue.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+                : '$0.00',
             appointments: `${periodAppointmentsCount} Bookings`,
             cx: 488,
             cy: 15,
@@ -255,9 +251,7 @@ export class DashboardService {
     } else {
       // 30d default
       chartConfig = {
-        sparklineD: hasData
-          ? 'M0,20 Q15,18 25,12 T50,15 T75,8 T100,2'
-          : 'M0,20 L100,20',
+        sparklineD: hasData ? 'M0,20 Q15,18 25,12 T50,15 T75,8 T100,2' : 'M0,20 L100,20',
         sparklineFill: hasData
           ? 'M0,20 Q15,18 25,12 T50,15 T75,8 T100,2 L100,25 L0,25 Z'
           : 'M0,20 L100,20 L100,25 L0,25 Z',
@@ -268,9 +262,10 @@ export class DashboardService {
           ? 'M10,130 Q60,110 120,70 T240,85 T360,40 T440,25 T488,10 L488,160 L10,160 Z'
           : 'M10,140 L488,140 L488,160 L10,160 Z',
         revenueGrowth: hasData ? '+18.4%' : '+0.0%',
-        clientsGrowth: totalClientsCount > 0
-          ? `+${Math.max(1, Math.round(totalClientsCount * 0.08))} this month`
-          : '0 this month',
+        clientsGrowth:
+          totalClientsCount > 0
+            ? `+${Math.max(1, Math.round(totalClientsCount * 0.08))} this month`
+            : '0 this month',
         xAxisLabels: [
           { full: 'Week 1', short: 'W1' },
           { full: 'Week 2', short: 'W2' },
@@ -445,7 +440,7 @@ export class DashboardService {
 
     // Sort combined activities by real timestamp descending and limit
     activitiesWithDate.sort((a, b) => b.rawDate.getTime() - a.rawDate.getTime());
-    return activitiesWithDate.slice(0, limit).map(({ rawDate, ...item }) => item);
+    return activitiesWithDate.slice(0, limit).map(({ rawDate: _rawDate, ...item }) => item);
   }
 
   /**
@@ -589,6 +584,15 @@ export class DashboardService {
             },
           ];
 
+    let invoiceStatus: InvoiceStatus = InvoiceStatus.PENDING;
+    if (input.status?.toUpperCase() === 'PAID') {
+      invoiceStatus = InvoiceStatus.PAID;
+    } else if (input.status?.toUpperCase() === 'OVERDUE') {
+      invoiceStatus = InvoiceStatus.OVERDUE;
+    } else if (input.status?.toUpperCase() === 'CANCELLED') {
+      invoiceStatus = InvoiceStatus.CANCELLED;
+    }
+
     return prisma.invoice.create({
       data: {
         organizationId,
@@ -597,7 +601,7 @@ export class DashboardService {
         subtotal: input.amount,
         tax: 0,
         total: input.amount,
-        status: (input.status?.toUpperCase() as any) ?? 'PENDING',
+        status: invoiceStatus,
         dueDate,
         items: {
           create: itemsToCreate,
@@ -673,11 +677,11 @@ export class DashboardService {
 
     const title = input.title ?? input.serviceTitle ?? 'Client Operations Engagement';
 
-    let aptType: any = 'VIDEO';
+    let aptType: AppointmentType = AppointmentType.VIDEO;
     if (input.locationType?.toLowerCase().includes('office') || input.type === 'IN_PERSON') {
-      aptType = 'IN_PERSON';
+      aptType = AppointmentType.IN_PERSON;
     } else if (input.locationType?.toLowerCase().includes('phone') || input.type === 'PHONE') {
-      aptType = 'PHONE';
+      aptType = AppointmentType.PHONE;
     }
 
     return prisma.appointment.create({

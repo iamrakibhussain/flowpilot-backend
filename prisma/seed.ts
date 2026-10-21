@@ -44,7 +44,9 @@ async function main() {
     });
 
     organizations = [demoOrg];
-    console.log('Created Demo Workspace: "FlowPilot Global Operations" (User: admin@flowpilot.internal / Admin1234!)');
+    console.log(
+      'Created Demo Workspace: "FlowPilot Global Operations" (User: admin@flowpilot.internal / Admin1234!)',
+    );
   }
 
   console.log(
