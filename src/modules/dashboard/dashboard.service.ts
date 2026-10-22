@@ -1,5 +1,6 @@
 import { InvoiceStatus, AppointmentType } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
+import { BadRequestError } from '../../common/errors/app-error.js';
 import {
   DashboardMetricsResponse,
   DashboardActivityItem,
@@ -540,6 +541,17 @@ export class DashboardService {
       customerId = cust.id;
     }
 
+    if (customerId) {
+      const existingCustomer = await prisma.customer.findFirst({
+        where: { id: customerId, organizationId },
+      });
+      if (existingCustomer && existingCustomer.status === 'INACTIVE') {
+        throw new BadRequestError(
+          'Cannot issue an invoice to an archived or inactive customer. Please reactivate them first.',
+        );
+      }
+    }
+
     if (!customerId) {
       const firstCust = await prisma.customer.findFirst({ where: { organizationId } });
       if (firstCust) {
@@ -637,6 +649,17 @@ export class DashboardService {
       customerId = cust.id;
     }
 
+    if (customerId) {
+      const existingCustomer = await prisma.customer.findFirst({
+        where: { id: customerId, organizationId },
+      });
+      if (existingCustomer && existingCustomer.status === 'INACTIVE') {
+        throw new BadRequestError(
+          'Cannot schedule an appointment for an archived or inactive customer. Please reactivate them first.',
+        );
+      }
+    }
+
     if (!customerId) {
       const firstCust = await prisma.customer.findFirst({ where: { organizationId } });
       if (firstCust) {
@@ -706,13 +729,32 @@ export class DashboardService {
    * Quick Create Customer (saves to live database)
    */
   public static async createCustomer(organizationId: string, input: QuickCreateCustomerInput) {
-    const notes = [
-      input.tier ? `Tier: ${input.tier}` : '',
+    const tags = input.tier ? [input.tier] : [];
+    const noteItems: Array<{ id: string; authorName: string; content: string; createdAt: string }> =
+      [];
+
+    const details = [
       input.assignedStaff ? `Assigned Staff: ${input.assignedStaff}` : '',
+      input.currency ? `Preferred Currency: ${input.currency}` : '',
       input.notes ?? '',
     ]
       .filter(Boolean)
       .join(' • ');
+
+    if (details.length > 0) {
+      noteItems.push({
+        id: `note-${Date.now()}`,
+        authorName: 'Account Onboarding Note',
+        content: details,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    const structured = JSON.stringify({
+      notes: noteItems,
+      tags,
+      address: null,
+    });
 
     return prisma.customer.create({
       data: {
@@ -721,18 +763,18 @@ export class DashboardService {
         email: input.email,
         phone: input.phone,
         company: input.company ?? input.contactName,
-        notes: notes.length > 0 ? notes : undefined,
+        notes: structured,
         status: 'ACTIVE',
       },
     });
   }
 
   /**
-   * Fetch customer list for modals / dropdowns
+   * Fetch customer list for modals / dropdowns (excludes archived/inactive records)
    */
   public static async getCustomers(organizationId: string) {
     return prisma.customer.findMany({
-      where: { organizationId },
+      where: { organizationId, status: { not: 'INACTIVE' } },
       orderBy: { name: 'asc' },
     });
   }
