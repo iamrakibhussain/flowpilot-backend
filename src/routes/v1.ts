@@ -6,6 +6,7 @@ import { customerRoutes } from '../modules/customers/customer.routes.js';
 import { appointmentRoutes } from '../modules/appointments/appointment.routes.js';
 import { serviceRoutes } from '../modules/services/service.routes.js';
 import { staffRoutes } from '../modules/staff/staff.routes.js';
+import { invoiceRoutes } from '../modules/invoices/invoice.routes.js';
 
 const router = Router();
 
@@ -16,5 +17,6 @@ router.use('/customers', customerRoutes);
 router.use('/appointments', appointmentRoutes);
 router.use('/services', serviceRoutes);
 router.use('/staff', staffRoutes);
+router.use('/invoices', invoiceRoutes);
 
 export const v1Routes = router;
