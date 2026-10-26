@@ -50,6 +50,9 @@ const baseEnvSchema = z.object({
   SMTP_PASS: z.string().optional(),
   EMAIL_FROM: z.string().default('FlowPilot Security <noreply@flowpilot.io>'),
   FRONTEND_URL: z.string().default('http://localhost:3000'),
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_PUBLISHABLE_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
 });
 
 const envSchema = baseEnvSchema.superRefine((data, ctx) => {

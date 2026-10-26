@@ -11,6 +11,7 @@ import {
   getEmailDispatchRateLimitOptions,
   getVerificationRateLimitOptions,
   getPasswordActionRateLimitOptions,
+  getPaymentRateLimitOptions,
   parseTrustProxy,
 } from './config/security.js';
 import { requestIdMiddleware } from './common/middleware/request-id.js';
@@ -96,8 +97,15 @@ export function createApp(options: AppOptions = { enableRateLimiting: true }): E
     next();
   });
 
-  // 6. JSON body parser with strict 100kb payload limit (urlencoded parser removed to prevent cross-origin form attacks)
-  app.use(express.json({ limit: '100kb' }));
+  // 6. JSON body parser with rawBody preservation for Stripe webhook verification
+  app.use(
+    express.json({
+      limit: '100kb',
+      verify: (req: express.Request & { rawBody?: Buffer }, _res, buf) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
 
   // 7. Cookie parser
   app.use(cookieParser());
@@ -113,6 +121,7 @@ export function createApp(options: AppOptions = { enableRateLimiting: true }): E
     app.use('/api/v1/auth/reset-password', rateLimit(getPasswordActionRateLimitOptions()));
     app.use('/api/v1/auth/change-password', rateLimit(getPasswordActionRateLimitOptions()));
     app.use('/api/v1/auth/account', rateLimit(getPasswordActionRateLimitOptions()));
+    app.use('/api/v1/payments/public', rateLimit(getPaymentRateLimitOptions()));
   }
 
   // 8. API v1 route mount

@@ -60,6 +60,13 @@ enum StaffStatus {
   OFFLINE
 }
 
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
 model User {
   id                     String                  @id @default(uuid())
   email                  String                  @unique
@@ -92,6 +99,8 @@ model Organization {
   staffMembers StaffMember[]
   appointments Appointment[]
   invoices     Invoice[]
+  paymentSettings     OrganizationPaymentSettings?
+  paymentTransactions PaymentTransaction[]
 
   @@map("organizations")
 }
@@ -174,6 +183,7 @@ model Customer {
   organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   appointments   Appointment[]
   invoices       Invoice[]
+  paymentTransactions PaymentTransaction[]
 
   @@index([organizationId])
   @@index([organizationId, email])
@@ -188,6 +198,8 @@ model Service {
   price           Decimal       @db.Decimal(10, 2)
   durationMinutes Int           @default(60) @map("duration_minutes")
   isActive        Boolean       @default(true) @map("is_active")
+  requireDeposit  Boolean       @default(false) @map("require_deposit")
+  depositAmount   Decimal?      @map("deposit_amount") @db.Decimal(10, 2)
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
@@ -230,6 +242,8 @@ model Appointment {
   type            AppointmentType   @default(VIDEO)
   location        String?
   notes           String?
+  depositPaid     Boolean           @default(false) @map("deposit_paid")
+  depositAmount   Decimal?          @map("deposit_amount") @db.Decimal(10, 2)
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
@@ -257,17 +271,26 @@ model Invoice {
   total          Decimal       @db.Decimal(12, 2)
   paidAt         DateTime?     @map("paid_at")
   notes          String?
+  paymentToken         String?              @map("payment_token")
+  paymentTokenExpiry   DateTime?            @map("payment_token_expiry")
+  gatewayProvider      String?              @map("gateway_provider")
+  gatewaySessionId     String?              @map("gateway_session_id")
+  gatewayPaymentIntent String?              @map("gateway_payment_intent")
+  gatewayFee           Decimal?             @map("gateway_fee") @db.Decimal(12, 2)
+  netAmount            Decimal?             @map("net_amount") @db.Decimal(12, 2)
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
 
   organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   customer       Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
   items          InvoiceItem[]
+  transactions   PaymentTransaction[]
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([customerId])
+  @@index([paymentToken])
   @@map("invoices")
 }
 
@@ -285,3 +308,51 @@ model InvoiceItem {
   @@index([invoiceId])
   @@map("invoice_items")
 }
+
+model PaymentTransaction {
+  id               String            @id @default(uuid())
+  organizationId   String            @map("organization_id")
+  invoiceId        String            @map("invoice_id")
+  customerId       String            @map("customer_id")
+  amount           Decimal           @db.Decimal(12, 2)
+  currency         String            @default("USD")
+  status           TransactionStatus @default(PENDING)
+  provider         String            @default("STRIPE")
+  gatewayReference String?           @map("gateway_reference")
+  gatewayEventId   String?           @unique @map("gateway_event_id")
+  paymentMethod    String?           @map("payment_method")
+  failureReason    String?           @map("failure_reason")
+  paidAt           DateTime?         @map("paid_at")
+  createdAt        DateTime          @default(now()) @map("created_at")
+
+  invoice          Invoice           @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer         Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, invoiceId])
+  @@index([customerId])
+  @@index([gatewayReference])
+  @@map("payment_transactions")
+}
+
+model OrganizationPaymentSettings {
+  id                    String   @id @default(uuid())
+  organizationId        String   @unique @map("organization_id")
+  stripeAccountId       String?  @map("stripe_account_id")
+  stripeConnected       Boolean  @default(false) @map("stripe_connected")
+  stripeChargesEnabled  Boolean  @default(false) @map("stripe_charges_enabled")
+  stripePublishableKey  String?  @map("stripe_publishable_key")
+  stripeSecretKey       String?  @map("stripe_secret_key")
+  stripeWebhookSecret   String?  @map("stripe_webhook_secret")
+  isTestMode            Boolean  @default(true) @map("is_test_mode")
+  defaultCurrency       String   @default("USD") @map("default_currency")
+  allowPartialPayments  Boolean  @default(false) @map("allow_partial_payments")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("organization_payment_settings")
+}
+
