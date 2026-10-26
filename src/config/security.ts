@@ -157,3 +157,21 @@ export function getClearSessionCookieOptions(): CookieOptions {
     path: '/',
   };
 }
+
+export function getPaymentRateLimitOptions(): Partial<RateLimitOptions> {
+  const isDev = env.NODE_ENV === 'development';
+  return {
+    windowMs: 15 * 60 * 1000,
+    max: isDev ? 1000 : 40,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: {
+        code: 'RATE_LIMITED',
+        message: 'Too many payment requests, please try again later.',
+        status: 429,
+      },
+    },
+  };
+}

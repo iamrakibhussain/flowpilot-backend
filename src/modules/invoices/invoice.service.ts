@@ -53,6 +53,7 @@ export class InvoiceService {
       })),
       isOverdue,
       daysOverdue,
+      paymentToken: inv.paymentToken || null,
     };
   }
 
