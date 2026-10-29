@@ -9,6 +9,7 @@ import { staffRoutes } from '../modules/staff/staff.routes.js';
 import { invoiceRoutes } from '../modules/invoices/invoice.routes.js';
 import { paymentRoutes } from '../modules/payments/payment.routes.js';
 import { teamRoutes } from '../modules/team/team.routes.js';
+import { publicBookingRoutes } from '../modules/public-booking/public-booking.routes.js';
 
 const router = Router();
 
@@ -22,5 +23,6 @@ router.use('/staff', staffRoutes);
 router.use('/invoices', invoiceRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/team', teamRoutes);
+router.use('/public/booking', publicBookingRoutes);
 
 export const v1Routes = router;

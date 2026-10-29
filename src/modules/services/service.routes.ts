@@ -12,6 +12,8 @@ router.get('/', ServiceController.list);
 router.post('/', ServiceController.create);
 router.get('/:id', ServiceController.getById);
 router.patch('/:id', ServiceController.update);
+router.put('/:id/staff', ServiceController.syncStaff);
+router.delete('/:id', ServiceController.delete);
 router.post('/:id/toggle-active', ServiceController.toggleActive);
 
 export const serviceRoutes = router;
