@@ -97,7 +97,10 @@ model Organization {
   id        String             @id @default(uuid())
   name      String
   slug      String             @unique
-  status    OrganizationStatus @default(ACTIVE)
+  status         OrganizationStatus @default(ACTIVE)
+  bookingEnabled Boolean            @default(true) @map("booking_enabled")
+  bookingTitle   String?            @map("booking_title")
+  bookingNotice  String?            @map("booking_notice")
   createdAt DateTime           @default(now()) @map("created_at")
   updatedAt DateTime           @updatedAt @map("updated_at")
 
@@ -204,10 +207,14 @@ model Service {
   organizationId  String   @map("organization_id")
   name            String
   description     String?
+  category        String   @default("General")
   price           Decimal  @db.Decimal(10, 2)
   durationMinutes Int      @default(60) @map("duration_minutes")
+  bufferBefore    Int      @default(0) @map("buffer_before_minutes")
+  bufferAfter     Int      @default(0) @map("buffer_after_minutes")
   isActive        Boolean  @default(true) @map("is_active")
   requireDeposit  Boolean  @default(false) @map("require_deposit")
+  depositType     String   @default("FIXED") @map("deposit_type")
   depositAmount   Decimal? @map("deposit_amount") @db.Decimal(10, 2)
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
@@ -217,6 +224,7 @@ model Service {
   staffMembers StaffService[]
 
   @@index([organizationId])
+  @@index([organizationId, category])
   @@map("services")
 }
 
