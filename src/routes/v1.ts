@@ -8,6 +8,7 @@ import { serviceRoutes } from '../modules/services/service.routes.js';
 import { staffRoutes } from '../modules/staff/staff.routes.js';
 import { invoiceRoutes } from '../modules/invoices/invoice.routes.js';
 import { paymentRoutes } from '../modules/payments/payment.routes.js';
+import { teamRoutes } from '../modules/team/team.routes.js';
 
 const router = Router();
 
@@ -20,5 +21,6 @@ router.use('/services', serviceRoutes);
 router.use('/staff', staffRoutes);
 router.use('/invoices', invoiceRoutes);
 router.use('/payments', paymentRoutes);
+router.use('/team', teamRoutes);
 
 export const v1Routes = router;
