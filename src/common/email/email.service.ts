@@ -440,4 +440,96 @@ export class EmailService {
     const result = await this.sendMail({ to, subject, text, html });
     return result.success;
   }
+  /**
+   * Dispatches a workspace invitation email with secure token accept URL.
+   */
+  public static async sendWorkspaceInvitation(
+    to: string,
+    inviterName: string,
+    organizationName: string,
+    role: string,
+    acceptUrl: string,
+  ): Promise<boolean> {
+    const safeInviter = escapeHtml(inviterName);
+    const safeOrg = escapeHtml(organizationName);
+    const safeRole = escapeHtml(role);
+    const subject = `${inviterName} invited you to join ${organizationName} on FlowPilot`;
+    const text = `Hello,\n\n${inviterName} has invited you to join ${organizationName} on FlowPilot as a ${role}.\n\nTo accept your invitation and access the workspace, click the link below:\n${acceptUrl}\n\nThis invitation link will expire in 7 days.\n\n— The FlowPilot Team`;
+
+    const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
+  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f8fafc; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 520px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+          <!-- Header -->
+          <tr>
+            <td style="padding: 28px 32px 20px 32px; border-bottom: 1px solid #f1f5f9;">
+              <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td>
+                    <span style="font-size: 20px; font-weight: 700; color: #2563eb; letter-spacing: -0.5px;">FlowPilot</span>
+                  </td>
+                  <td align="right">
+                    <span style="font-size: 11px; font-weight: 700; color: #4338ca; background-color: #e0e7ff; padding: 4px 10px; border-radius: 9999px; text-transform: uppercase;">Team Invitation</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- Body -->
+          <tr>
+            <td style="padding: 32px;">
+              <h1 style="margin: 0 0 16px 0; font-size: 22px; font-weight: 700; color: #0f172a; letter-spacing: -0.5px;">Join ${safeOrg}</h1>
+              <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; color: #475569;">
+                <strong>${safeInviter}</strong> has invited you to collaborate on the <strong>${safeOrg}</strong> workspace as an assigned <strong>${safeRole}</strong>.
+              </p>
+              <p style="margin: 0 0 24px 0; font-size: 14px; line-height: 1.6; color: #475569;">
+                With your FlowPilot workspace access, you can manage client schedules, view appointments, and update live operational deliverables.
+              </p>
+              
+              <!-- CTA Button -->
+              <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="margin: 28px 0;">
+                <tr>
+                  <td align="center" style="border-radius: 10px; background: #2563eb;">
+                    <a href="${acceptUrl}" target="_blank" style="font-size: 14px; font-weight: 600; color: #ffffff; text-decoration: none; padding: 14px 28px; display: inline-block; border-radius: 10px; box-shadow: 0 2px 4px rgba(37, 99, 235, 0.3);">
+                      Accept Invitation &amp; Join Workspace &rarr;
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              
+              <p style="margin: 0 0 8px 0; font-size: 12px; color: #64748b; line-height: 1.5;">
+                This invitation link will expire in <strong>7 days</strong>.
+              </p>
+              <p style="margin: 0; font-size: 11px; color: #94a3b8; line-height: 1.4; word-break: break-all;">
+                Or copy and paste this link into your browser: <br/>${acceptUrl}
+              </p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 20px 32px; background-color: #f8fafc; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+              <p style="margin: 0 0 4px 0;">&copy; 2026 FlowPilot, Inc. All rights reserved.</p>
+              <p style="margin: 0;">Automated invitation dispatched on behalf of ${safeOrg}.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+    `;
+
+    const result = await this.sendMail({ to, subject, text, html });
+    return result.success;
+  }
 }
