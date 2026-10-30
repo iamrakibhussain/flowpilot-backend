@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { ZodError } from 'zod';
 import { AppError } from '../errors/app-error.js';
 import { sendError } from '../http/response.js';
 import { logger } from '../logging/logger.js';
@@ -21,6 +22,30 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
         ...(err.details ? { details: err.details } : {}),
       },
       err.statusCode,
+    );
+    return;
+  }
+
+  // Handle Zod validation errors
+  if (err instanceof ZodError) {
+    const details: Record<string, string[]> = {};
+    for (const issue of err.issues) {
+      const path = issue.path.join('.') || 'root';
+      if (!details[path]) {
+        details[path] = [];
+      }
+      details[path].push(issue.message);
+    }
+
+    sendError(
+      res,
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed',
+        status: 400,
+        details,
+      },
+      400,
     );
     return;
   }

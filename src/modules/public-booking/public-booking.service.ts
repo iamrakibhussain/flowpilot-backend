@@ -68,6 +68,17 @@ export class PublicBookingService {
       bookingEnabled: org.bookingEnabled,
       bookingTitle: org.bookingTitle || `Book an Appointment with ${org.name}`,
       bookingNotice: org.bookingNotice,
+      logoUrl: org.logoUrl,
+      tagline: org.tagline,
+      brandColor: org.brandColor || '#2563eb',
+      customDomain: org.customDomain || null,
+      contactEmail: org.contactEmail,
+      contactPhone: org.contactPhone,
+      address: org.address,
+      currency: org.currency,
+      timezone: org.timezone,
+      minNoticeHours: org.minNoticeHours,
+      cancellationHours: org.cancellationHours,
       services: org.services.map((s) => ({
         id: s.id,
         name: s.name,
@@ -104,7 +115,7 @@ export class PublicBookingService {
 
     const org = await prisma.organization.findUnique({
       where: { slug: slug.trim().toLowerCase() },
-      select: { id: true, bookingEnabled: true, status: true },
+      select: { id: true, bookingEnabled: true, status: true, minNoticeHours: true },
     });
 
     if (!org || org.status !== 'ACTIVE' || !org.bookingEnabled) {
@@ -226,17 +237,28 @@ export class PublicBookingService {
       }
     }
 
-    // Format output
+    // Format output and enforce minimum advance notice policy
     const sortedTimeStrings = Array.from(slotsMap.keys()).sort();
-    return sortedTimeStrings.map((timeStr) => {
-      const startMin = timeStringToMinutes(timeStr);
-      const endMin = startMin + duration;
-      return {
-        startTime: timeStr,
-        endTime: minutesToTimeString(endMin),
-        availableStaffIds: Array.from(slotsMap.get(timeStr)!),
-      };
-    });
+    const now = new Date();
+    const isToday = dateStr === now.toISOString().slice(0, 10);
+    const minNoticeHours = org.minNoticeHours ?? 2;
+    const currentMinutesFromMidnight = now.getUTCHours() * 60 + now.getUTCMinutes();
+    const cutoffMinutes = currentMinutesFromMidnight + minNoticeHours * 60;
+
+    return sortedTimeStrings
+      .filter((timeStr) => {
+        if (!isToday) return true;
+        return timeStringToMinutes(timeStr) >= cutoffMinutes;
+      })
+      .map((timeStr) => {
+        const startMin = timeStringToMinutes(timeStr);
+        const endMin = startMin + duration;
+        return {
+          startTime: timeStr,
+          endTime: minutesToTimeString(endMin),
+          availableStaffIds: Array.from(slotsMap.get(timeStr)!),
+        };
+      });
   }
 
   public static async bookAppointment(
