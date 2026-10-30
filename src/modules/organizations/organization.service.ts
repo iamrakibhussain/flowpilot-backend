@@ -63,6 +63,7 @@ export class OrganizationSettingsService {
     // Custom domain uniqueness check
     if (
       input.customDomain &&
+      input.customDomain.trim() !== '' &&
       input.customDomain.toLowerCase().trim() !== (currentOrg.customDomain || '').toLowerCase()
     ) {
       const normalizedDomain = input.customDomain.toLowerCase().trim();
@@ -85,10 +86,16 @@ export class OrganizationSettingsService {
         ...(input.logoUrl !== undefined && { logoUrl: input.logoUrl }),
         ...(input.tagline !== undefined && { tagline: input.tagline }),
         ...(input.brandColor !== undefined && {
-          brandColor: input.brandColor ? input.brandColor.toLowerCase() : '#2563eb',
+          brandColor:
+            input.brandColor && input.brandColor.trim() !== ''
+              ? input.brandColor.toLowerCase().trim()
+              : '#2563eb',
         }),
         ...(input.customDomain !== undefined && {
-          customDomain: input.customDomain ? input.customDomain.toLowerCase().trim() : null,
+          customDomain:
+            input.customDomain && input.customDomain.trim() !== ''
+              ? input.customDomain.toLowerCase().trim()
+              : null,
         }),
         ...(input.contactEmail !== undefined && {
           contactEmail: input.contactEmail ? input.contactEmail.trim().toLowerCase() : null,

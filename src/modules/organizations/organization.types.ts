@@ -35,18 +35,29 @@ export const updateOrganizationSettingsSchema = z.object({
   logoUrl: z.string().max(200000, 'Logo URL or data payload too large').nullable().optional(),
   tagline: z.string().max(200).nullable().optional(),
   brandColor: z
-    .string()
-    .regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, 'Brand color must be a valid hex color code')
+    .union([
+      z
+        .string()
+        .regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, 'Brand color must be a valid hex color code'),
+      z.literal(''),
+      z.null(),
+    ])
     .nullable()
     .optional(),
   customDomain: z
-    .string()
-    .min(3)
-    .max(100)
-    .regex(
-      /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$/i,
-      'Custom domain must be a valid FQDN (e.g. booking.mycompany.com)',
-    )
+    .union([
+      z
+        .string()
+        .trim()
+        .min(3)
+        .max(100)
+        .regex(
+          /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$/i,
+          'Custom domain must be a valid FQDN (e.g. booking.mycompany.com)',
+        ),
+      z.literal(''),
+      z.null(),
+    ])
     .nullable()
     .optional(),
   contactEmail: z.union([z.string().email(), z.literal(''), z.null()]).optional(),

@@ -266,4 +266,58 @@ describe('Organization Settings Module Integration Suite', () => {
     expect(res.body.data[0].action).toBe('UPDATED_SETTINGS');
     expect(res.body.data[0].userName).toBe('Alex Rivera');
   });
+
+  it('allows empty customDomain string and null values during settings update', async () => {
+    const app = createTestApp();
+    vi.spyOn(prisma.organization, 'findUnique').mockResolvedValue({
+      id: targetOrgId,
+      name: 'Apex Studio Design',
+      slug: 'apex-studio',
+      customDomain: null,
+      brandColor: '#2563eb',
+    } as any);
+
+    vi.spyOn(prisma.organization, 'update').mockResolvedValue({
+      id: targetOrgId,
+      name: 'Apex Studio Design',
+      slug: 'apex-studio',
+      customDomain: null,
+      brandColor: '#2563eb',
+      status: 'ACTIVE',
+      currency: 'USD',
+      timezone: 'UTC',
+      bookingEnabled: true,
+      defaultTaxRate: 0,
+      defaultPaymentTerms: 'DUE_ON_RECEIPT',
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-02T00:00:00Z'),
+    } as any);
+
+    const res = await request(app)
+      .patch('/api/v1/organizations/settings')
+      .set('Cookie', ['flowpilot_session=valid-test-token'])
+      .set('X-Organization-Id', targetOrgId)
+      .send({
+        customDomain: '',
+        brandColor: '',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  it('returns 400 VALIDATION_ERROR on invalid FQDN custom domain', async () => {
+    const app = createTestApp();
+    const res = await request(app)
+      .patch('/api/v1/organizations/settings')
+      .set('Cookie', ['flowpilot_session=valid-test-token'])
+      .set('X-Organization-Id', targetOrgId)
+      .send({
+        customDomain: 'invalid domain with spaces',
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(res.body.error.details.customDomain).toBeDefined();
+  });
 });
