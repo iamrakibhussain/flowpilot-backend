@@ -40,7 +40,7 @@ export class PortalService {
       throw new NotFoundError(`Organization "${input.organizationSlug}" not found`);
     }
 
-    const customer = await prisma.customer.findFirst({
+    let customer = await prisma.customer.findFirst({
       where: {
         organizationId: org.id,
         email: {
@@ -54,6 +54,40 @@ export class PortalService {
         email: true,
       },
     });
+
+    // If customer record not found, check if they are a registered workspace member or owner
+    if (!customer) {
+      const workspaceMember = await prisma.user.findFirst({
+        where: {
+          email: { equals: input.email, mode: 'insensitive' },
+          memberships: {
+            some: { organizationId: org.id },
+          },
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      });
+
+      if (workspaceMember) {
+        customer = await prisma.customer.create({
+          data: {
+            organizationId: org.id,
+            name: workspaceMember.name,
+            email: workspaceMember.email.toLowerCase(),
+            status: 'ACTIVE',
+            notes: 'Workspace member client portal profile',
+          },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        });
+      }
+    }
 
     if (customer) {
       // 1. Generate high-entropy 256-bit magic token
