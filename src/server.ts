@@ -6,7 +6,7 @@ import { AuthService } from './modules/auth/auth.service.js';
 
 const app = createApp();
 
-// FlowPilot Server Entry Point — Production Deliverability Enabled
+// FlowPilot Server Entry Point — Production Deliverability & Client Portal Enabled
 const server = app.listen(env.PORT, env.HOST, () => {
   logger.info(
     {
