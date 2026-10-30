@@ -34,6 +34,21 @@ export const updateOrganizationSettingsSchema = z.object({
     .optional(),
   logoUrl: z.string().max(200000, 'Logo URL or data payload too large').nullable().optional(),
   tagline: z.string().max(200).nullable().optional(),
+  brandColor: z
+    .string()
+    .regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, 'Brand color must be a valid hex color code')
+    .nullable()
+    .optional(),
+  customDomain: z
+    .string()
+    .min(3)
+    .max(100)
+    .regex(
+      /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$/i,
+      'Custom domain must be a valid FQDN (e.g. booking.mycompany.com)',
+    )
+    .nullable()
+    .optional(),
   contactEmail: z.union([z.string().email(), z.literal(''), z.null()]).optional(),
   contactPhone: z.string().max(30).nullable().optional(),
   address: z.string().max(300).nullable().optional(),
@@ -70,6 +85,8 @@ export interface OrganizationSettingsDTO {
   status: string;
   logoUrl: string | null;
   tagline: string | null;
+  brandColor: string | null;
+  customDomain: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
   address: string | null;
@@ -92,4 +109,16 @@ export interface OrganizationSettingsDTO {
   autoConfirmBookings: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface WorkspaceAuditLogDTO {
+  id: string;
+  organizationId: string;
+  userId: string;
+  userName: string;
+  action: string;
+  category: string;
+  details: string;
+  ipAddress: string | null;
+  createdAt: string;
 }

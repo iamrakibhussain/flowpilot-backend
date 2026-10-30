@@ -70,6 +70,8 @@ export class PublicBookingService {
       bookingNotice: org.bookingNotice,
       logoUrl: org.logoUrl,
       tagline: org.tagline,
+      brandColor: org.brandColor || '#2563eb',
+      customDomain: org.customDomain || null,
       contactEmail: org.contactEmail,
       contactPhone: org.contactPhone,
       address: org.address,

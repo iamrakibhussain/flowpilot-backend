@@ -105,6 +105,8 @@ model Organization {
   // Brand & Public Portal
   logoUrl        String?            @map("logo_url")
   tagline        String?
+  brandColor     String?            @default("#2563eb") @map("brand_color")
+  customDomain   String?            @unique @map("custom_domain")
   contactEmail   String?            @map("contact_email")
   contactPhone   String?            @map("contact_phone")
   address        String?
@@ -140,6 +142,7 @@ model Organization {
   paymentSettings     OrganizationPaymentSettings?
   paymentTransactions PaymentTransaction[]
   invitations         OrganizationInvitation[]
+  auditLogs           WorkspaceAuditLog[]
 
   @@map("organizations")
 }
@@ -450,4 +453,21 @@ model OrganizationInvitation {
   @@index([email])
   @@index([tokenHash])
   @@map("organization_invitations")
+}
+
+model WorkspaceAuditLog {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  userId         String       @map("user_id")
+  userName       String       @map("user_name")
+  action         String
+  category       String       @default("SETTINGS")
+  details        String
+  ipAddress      String?      @map("ip_address")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@map("workspace_audit_logs")
 }

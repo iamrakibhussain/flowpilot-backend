@@ -11,5 +11,6 @@ router.use(tenantContextMiddleware());
 router.get('/settings', OrganizationController.getSettings);
 router.patch('/settings', OrganizationController.updateSettings);
 router.post('/settings/check-slug', OrganizationController.checkSlug);
+router.get('/audit-logs', OrganizationController.getAuditLogs);
 
 export const organizationRoutes = router;

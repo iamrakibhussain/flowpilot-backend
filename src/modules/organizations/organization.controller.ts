@@ -33,8 +33,31 @@ export class OrganizationController {
       }
 
       const validated = updateOrganizationSettingsSchema.parse(req.body);
-      const updated = await OrganizationSettingsService.updateSettings(organizationId, validated);
+      const actor = req.user
+        ? {
+            id: req.user.id,
+            name: req.user.name,
+            ip: (req.headers['x-forwarded-for'] as string) || req.ip || undefined,
+          }
+        : undefined;
+
+      const updated = await OrganizationSettingsService.updateSettings(
+        organizationId,
+        validated,
+        actor,
+      );
       sendSuccess(res, updated);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  public static async getAuditLogs(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const organizationId = req.tenant!.organizationId;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+      const logs = await OrganizationSettingsService.getAuditLogs(organizationId, limit);
+      sendSuccess(res, logs);
     } catch (err) {
       next(err);
     }

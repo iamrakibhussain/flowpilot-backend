@@ -34,6 +34,8 @@ describe('Organization Settings Module Integration Suite', () => {
     bankAccount: '1234567890',
     bankRouting: '021000021',
     bankSwift: 'CHASUS33',
+    brandColor: '#2563eb',
+    customDomain: null,
     minNoticeHours: 4,
     maxHorizonDays: 45,
     cancellationHours: 24,
@@ -62,6 +64,21 @@ describe('Organization Settings Module Integration Suite', () => {
       },
       activeOrganizationId: targetOrgId,
     });
+
+    vi.spyOn(prisma.workspaceAuditLog, 'create').mockResolvedValue({} as any);
+    vi.spyOn(prisma.workspaceAuditLog, 'findMany').mockResolvedValue([
+      {
+        id: 'audit-1',
+        organizationId: targetOrgId,
+        userId: 'usr-test-1',
+        userName: 'Alex Rivera',
+        action: 'UPDATED_SETTINGS',
+        category: 'SETTINGS',
+        details: 'Updated workspace configuration: brandColor',
+        ipAddress: '127.0.0.1',
+        createdAt: new Date('2026-01-02T00:00:00Z'),
+      } as any,
+    ]);
   });
 
   function createTestApp() {
@@ -120,6 +137,21 @@ describe('Organization Settings Module Integration Suite', () => {
       },
       activeOrganizationId: targetOrgId,
     });
+
+    vi.spyOn(prisma.workspaceAuditLog, 'create').mockResolvedValue({} as any);
+    vi.spyOn(prisma.workspaceAuditLog, 'findMany').mockResolvedValue([
+      {
+        id: 'audit-1',
+        organizationId: targetOrgId,
+        userId: 'usr-test-1',
+        userName: 'Alex Rivera',
+        action: 'UPDATED_SETTINGS',
+        category: 'SETTINGS',
+        details: 'Updated workspace configuration: brandColor',
+        ipAddress: '127.0.0.1',
+        createdAt: new Date('2026-01-02T00:00:00Z'),
+      } as any,
+    ]);
 
     const app = createTestApp();
     const res = await request(app)
@@ -219,5 +251,19 @@ describe('Organization Settings Module Integration Suite', () => {
 
     expect(ownRes.status).toBe(200);
     expect(ownRes.body.data.available).toBe(true);
+  });
+
+  it('retrieves workspace audit logs with caller membership verification', async () => {
+    const app = createTestApp();
+    const res = await request(app)
+      .get('/api/v1/organizations/audit-logs')
+      .set('Cookie', ['flowpilot_session=valid-test-token'])
+      .set('X-Organization-Id', targetOrgId);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data[0].action).toBe('UPDATED_SETTINGS');
+    expect(res.body.data[0].userName).toBe('Alex Rivera');
   });
 });

@@ -1,6 +1,16 @@
 import { prisma } from '../../database/prisma.js';
 import { NotFoundError, ConflictError, BadRequestError } from '../../common/errors/app-error.js';
-import { UpdateOrganizationSettingsInput, OrganizationSettingsDTO } from './organization.types.js';
+import {
+  UpdateOrganizationSettingsInput,
+  OrganizationSettingsDTO,
+  WorkspaceAuditLogDTO,
+} from './organization.types.js';
+
+export interface AuditActorContext {
+  id: string;
+  name: string;
+  ip?: string;
+}
 
 export class OrganizationSettingsService {
   public static async getSettings(organizationId: string): Promise<OrganizationSettingsDTO> {
@@ -22,6 +32,7 @@ export class OrganizationSettingsService {
   public static async updateSettings(
     organizationId: string,
     input: UpdateOrganizationSettingsInput,
+    actor?: AuditActorContext,
   ): Promise<OrganizationSettingsDTO> {
     if (!organizationId) {
       throw new BadRequestError('Organization ID is required');
@@ -49,6 +60,23 @@ export class OrganizationSettingsService {
       }
     }
 
+    // Custom domain uniqueness check
+    if (
+      input.customDomain &&
+      input.customDomain.toLowerCase().trim() !== (currentOrg.customDomain || '').toLowerCase()
+    ) {
+      const normalizedDomain = input.customDomain.toLowerCase().trim();
+      const existingDomain = await prisma.organization.findUnique({
+        where: { customDomain: normalizedDomain },
+      });
+
+      if (existingDomain && existingDomain.id !== organizationId) {
+        throw new ConflictError(
+          `The custom domain '${normalizedDomain}' is already claimed by another organization`,
+        );
+      }
+    }
+
     const updated = await prisma.organization.update({
       where: { id: organizationId },
       data: {
@@ -56,6 +84,12 @@ export class OrganizationSettingsService {
         ...(input.slug !== undefined && { slug: input.slug.toLowerCase().trim() }),
         ...(input.logoUrl !== undefined && { logoUrl: input.logoUrl }),
         ...(input.tagline !== undefined && { tagline: input.tagline }),
+        ...(input.brandColor !== undefined && {
+          brandColor: input.brandColor ? input.brandColor.toLowerCase() : '#2563eb',
+        }),
+        ...(input.customDomain !== undefined && {
+          customDomain: input.customDomain ? input.customDomain.toLowerCase().trim() : null,
+        }),
         ...(input.contactEmail !== undefined && {
           contactEmail: input.contactEmail ? input.contactEmail.trim().toLowerCase() : null,
         }),
@@ -87,7 +121,59 @@ export class OrganizationSettingsService {
       },
     });
 
+    // Record audit trail entry
+    if (actor) {
+      try {
+        const changedFields = Object.keys(input)
+          .filter((k) => (input as Record<string, unknown>)[k] !== undefined)
+          .join(', ');
+
+        if (changedFields) {
+          await prisma.workspaceAuditLog.create({
+            data: {
+              organizationId,
+              userId: actor.id,
+              userName: actor.name,
+              action: 'UPDATED_SETTINGS',
+              category: 'SETTINGS',
+              details: `Updated workspace configuration: ${changedFields}`,
+              ipAddress: actor.ip || null,
+            },
+          });
+        }
+      } catch {
+        // Log error silently without failing the main transaction
+      }
+    }
+
     return this.mapToDTO(updated);
+  }
+
+  public static async getAuditLogs(
+    organizationId: string,
+    limit = 20,
+  ): Promise<WorkspaceAuditLogDTO[]> {
+    if (!organizationId) {
+      throw new BadRequestError('Organization ID is required');
+    }
+
+    const logs = await prisma.workspaceAuditLog.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(limit, 50),
+    });
+
+    return logs.map((l) => ({
+      id: l.id,
+      organizationId: l.organizationId,
+      userId: l.userId,
+      userName: l.userName,
+      action: l.action,
+      category: l.category,
+      details: l.details,
+      ipAddress: l.ipAddress,
+      createdAt: l.createdAt.toISOString(),
+    }));
   }
 
   public static async checkSlugAvailability(
@@ -115,6 +201,8 @@ export class OrganizationSettingsService {
     status: string;
     logoUrl: string | null;
     tagline: string | null;
+    brandColor?: string | null;
+    customDomain?: string | null;
     contactEmail: string | null;
     contactPhone: string | null;
     address: string | null;
@@ -145,6 +233,8 @@ export class OrganizationSettingsService {
       status: org.status,
       logoUrl: org.logoUrl,
       tagline: org.tagline,
+      brandColor: org.brandColor || '#2563eb',
+      customDomain: org.customDomain || null,
       contactEmail: org.contactEmail,
       contactPhone: org.contactPhone,
       address: org.address,
