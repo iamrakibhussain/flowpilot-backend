@@ -29,6 +29,15 @@ export interface PublicOrganizationProfile {
   bookingEnabled: boolean;
   bookingTitle?: string | null;
   bookingNotice?: string | null;
+  logoUrl?: string | null;
+  tagline?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  address?: string | null;
+  currency?: string;
+  timezone?: string;
+  minNoticeHours?: number;
+  cancellationHours?: number;
   services: PublicServiceItem[];
   staffMembers: PublicStaffItem[];
 }

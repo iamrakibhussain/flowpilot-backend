@@ -101,6 +101,33 @@ model Organization {
   bookingEnabled Boolean            @default(true) @map("booking_enabled")
   bookingTitle   String?            @map("booking_title")
   bookingNotice  String?            @map("booking_notice")
+
+  // Brand & Public Portal
+  logoUrl        String?            @map("logo_url")
+  tagline        String?
+  contactEmail   String?            @map("contact_email")
+  contactPhone   String?            @map("contact_phone")
+  address        String?
+
+  // Financial Localization & Defaults
+  currency            String         @default("USD")
+  timezone            String         @default("UTC")
+  taxId               String?        @map("tax_id")
+  defaultTaxRate      Float          @default(0.0) @map("default_tax_rate")
+  defaultPaymentTerms String         @default("NET_15") @map("default_payment_terms")
+  invoiceFooter       String?        @map("invoice_footer")
+
+  // Bank Remittance Coordinates
+  bankName        String?            @map("bank_name")
+  bankAccount     String?            @map("bank_account")
+  bankRouting     String?            @map("bank_routing")
+  bankSwift       String?            @map("bank_swift")
+
+  // Scheduling & Policy Controls
+  minNoticeHours      Int            @default(2) @map("min_notice_hours")
+  maxHorizonDays      Int            @default(30) @map("max_horizon_days")
+  cancellationHours   Int            @default(24) @map("cancellation_hours")
+  autoConfirmBookings Boolean        @default(true) @map("auto_confirm_bookings")
   createdAt DateTime           @default(now()) @map("created_at")
   updatedAt DateTime           @updatedAt @map("updated_at")
 
