@@ -532,4 +532,112 @@ export class EmailService {
     const result = await this.sendMail({ to, subject, text, html });
     return result.success;
   }
+
+  /**
+   * Dispatches a branded passwordless magic link & 6-digit verification code
+   * for customer self-service portal access. Expires in 15 minutes.
+   */
+  public static async sendCustomerPortalMagicLinkEmail(options: {
+    to: string;
+    customerName: string;
+    organizationName: string;
+    organizationSlug: string;
+    brandColor?: string | null;
+    rawToken: string;
+    code: string;
+  }): Promise<boolean> {
+    const safeName = escapeHtml(options.customerName);
+    const safeOrg = escapeHtml(options.organizationName);
+    const brandColor = options.brandColor || '#2563eb';
+    const loginUrl = `${env.FRONTEND_URL}/portal/${encodeURIComponent(options.organizationSlug)}/verify?token=${encodeURIComponent(options.rawToken)}`;
+    const subject = `Your sign-in link for ${safeOrg} Client Portal`;
+
+    const text = `Hello ${options.customerName},\n\nHere is your secure access link and 6-digit code to sign in to your ${options.organizationName} Client Portal.\n\nYour 6-Digit Code: ${options.code}\n\nOr click this direct sign-in link:\n${loginUrl}\n\nThis code and link expire in 15 minutes.\n\nIf you did not request this, you can safely ignore this email.\n\n— ${options.organizationName}`;
+
+    const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
+  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f8fafc; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 520px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+          <!-- Header -->
+          <tr>
+            <td style="padding: 28px 32px 20px 32px; border-bottom: 1px solid #f1f5f9;">
+              <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td>
+                    <span style="font-size: 20px; font-weight: 700; color: ${brandColor}; letter-spacing: -0.5px;">${safeOrg}</span>
+                  </td>
+                  <td align="right">
+                    <span style="font-size: 11px; font-weight: 600; color: #0284c7; background-color: #e0f2fe; padding: 4px 10px; border-radius: 9999px;">Client Portal</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- Body -->
+          <tr>
+            <td style="padding: 32px 32px 28px 32px;">
+              <h1 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 700; color: #0f172a; line-height: 1.3;">
+                Sign in to your client account
+              </h1>
+              <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.6; color: #475569;">
+                Hello <strong>${safeName}</strong>,<br/>
+                Use the 6-digit verification code below, or click the direct button to access your appointments, invoices, and service history.
+              </p>
+
+              <!-- 6-digit Code Box -->
+              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 24px 0 28px 0;">
+                <tr>
+                  <td align="center" style="background-color: #f1f5f9; border-radius: 12px; padding: 18px 24px; border: 1px dashed #cbd5e1;">
+                    <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; color: #64748b; margin-bottom: 6px;">Your 6-Digit Passcode</div>
+                    <div style="font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #0f172a; font-family: monospace;">${options.code}</div>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Direct CTA Button -->
+              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 0 0 24px 0;">
+                <tr>
+                  <td align="center" style="border-radius: 10px; background: ${brandColor};">
+                    <a href="${loginUrl}" target="_blank" style="font-size: 14px; font-weight: 600; color: #ffffff; text-decoration: none; padding: 14px 28px; display: inline-block; border-radius: 10px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);">
+                      Sign In to Client Portal &rarr;
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 0 0 8px 0; font-size: 12px; color: #64748b; line-height: 1.5;">
+                This link and passcode will expire in <strong>15 minutes</strong>.
+              </p>
+              <p style="margin: 0; font-size: 11px; color: #94a3b8; line-height: 1.4; word-break: break-all;">
+                Or copy and paste this link into your browser: <br/>${loginUrl}
+              </p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 20px 32px; background-color: #f8fafc; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+              <p style="margin: 0 0 4px 0;">&copy; 2026 ${safeOrg}. Powered by FlowPilot.</p>
+              <p style="margin: 0;">If you did not request this login code, you can safely disregard this message.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+    `;
+
+    const result = await this.sendMail({ to: options.to, subject, text, html });
+    return result.success;
+  }
 }
