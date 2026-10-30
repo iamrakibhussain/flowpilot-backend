@@ -114,7 +114,9 @@ describe('Client Self-Service Portal Integration Suite', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data.customer.email).toBe('jane@example.com');
       expect(res.headers['set-cookie']).toBeDefined();
-      expect(res.headers['set-cookie'][0]).toContain(PORTAL_COOKIE_NAME);
+      const rawCookie = res.headers['set-cookie'];
+      const cookieHeader = Array.isArray(rawCookie) ? rawCookie[0] : String(rawCookie);
+      expect(cookieHeader).toContain(PORTAL_COOKIE_NAME);
     });
 
     it('rejects invalid or expired verification code with 401', async () => {
