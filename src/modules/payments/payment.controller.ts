@@ -51,6 +51,32 @@ export class PaymentController {
   }
 
   /**
+   * POST /api/v1/payments/public/verify-session/:token
+   * Verify and reconcile a Stripe checkout session upon redirect
+   */
+  public static async verifySession(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
+    try {
+      const { token } = req.params;
+      if (!token) {
+        throw new BadRequestError('Payment token is required');
+      }
+
+      const sessionId = req.body?.sessionId || req.query?.sessionId;
+      const result = await PaymentService.verifyCheckoutSession(
+        token,
+        typeof sessionId === 'string' ? sessionId : undefined,
+      );
+      sendSuccess(res, result);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
    * POST /api/v1/payments/public/sandbox-pay/:token
    * Instant sandbox payment settlement simulation
    */

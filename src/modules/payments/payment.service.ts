@@ -253,6 +253,113 @@ export class PaymentService {
   }
 
   /**
+   * Verify and reconcile a Stripe Checkout session upon customer redirect
+   */
+  public static async verifyCheckoutSession(
+    token: string,
+    sessionId?: string,
+  ): Promise<{ success: boolean; alreadyPaid?: boolean; reconciled?: boolean; message?: string }> {
+    const invoice = await prisma.invoice.findFirst({
+      where: { paymentToken: token },
+      include: {
+        customer: true,
+        organization: {
+          include: { paymentSettings: true },
+        },
+      },
+    });
+
+    if (!invoice) {
+      throw new NotFoundError('Invoice statement not found');
+    }
+
+    if (invoice.status === InvoiceStatus.PAID) {
+      return {
+        success: true,
+        alreadyPaid: true,
+        message: 'Invoice is already settled in full.',
+      };
+    }
+
+    const sid = sessionId || invoice.gatewaySessionId;
+    if (!sid) {
+      throw new BadRequestError('No checkout session associated with this invoice to verify.');
+    }
+
+    const settings = invoice.organization.paymentSettings;
+    const stripeKey = settings?.stripeSecretKey || process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey) {
+      throw new BadRequestError('Payment provider credentials are not configured.');
+    }
+
+    const stripe = this.getStripeClient(stripeKey);
+    if (!stripe) {
+      throw new BadRequestError('Failed to initialize Stripe client.');
+    }
+
+    try {
+      const session = await stripe.checkout.sessions.retrieve(sid);
+      if (session.payment_status === 'paid' || session.status === 'complete') {
+        const amountTotal = session.amount_total
+          ? session.amount_total / 100
+          : Number(invoice.total);
+        const paymentIntentId =
+          typeof session.payment_intent === 'string'
+            ? session.payment_intent
+            : session.payment_intent?.id || null;
+
+        await prisma.$transaction([
+          prisma.invoice.update({
+            where: { id: invoice.id },
+            data: {
+              status: InvoiceStatus.PAID,
+              paidAt: new Date(),
+              gatewayProvider: 'STRIPE',
+              gatewayPaymentIntent: paymentIntentId,
+              netAmount: amountTotal,
+            },
+          }),
+          prisma.paymentTransaction.create({
+            data: {
+              organizationId: invoice.organizationId,
+              invoiceId: invoice.id,
+              customerId: invoice.customerId,
+              amount: amountTotal,
+              currency: (session.currency || 'USD').toUpperCase(),
+              status: TransactionStatus.SUCCESS,
+              provider: 'STRIPE',
+              gatewayReference: paymentIntentId || session.id,
+              paymentMethod: 'stripe_checkout',
+              paidAt: new Date(),
+            },
+          }),
+        ]);
+
+        logger.info(
+          { invoiceId: invoice.id, sessionId: session.id },
+          'Invoice verified and marked as PAID via checkout session reconciliation',
+        );
+
+        return {
+          success: true,
+          reconciled: true,
+          message: 'Payment verified and invoice settled successfully.',
+        };
+      }
+
+      return {
+        success: false,
+        message: `Stripe checkout session status is ${session.payment_status}.`,
+      };
+    } catch (err: unknown) {
+      logger.error({ err, sid }, 'Error retrieving Stripe checkout session during verification');
+      throw new BadRequestError(
+        err instanceof Error ? err.message : 'Could not verify checkout session with Stripe.',
+      );
+    }
+  }
+
+  /**
    * Settle an invoice in Sandbox Test Mode (Client portal 1-tap checkout simulation)
    */
   public static async settleSandboxPayment(

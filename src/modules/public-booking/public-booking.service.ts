@@ -436,7 +436,7 @@ export class PublicBookingService {
       type: 'BOOKING_CREATED',
       title: `New Online Booking: ${result.serviceName}`,
       message: `${result.customerName} booked ${result.serviceName} for ${new Date(result.scheduledAt).toLocaleDateString()}${result.staffName ? ` with ${result.staffName}` : ''}.`,
-      actionUrl: '/dashboard/calendar',
+      actionUrl: `/dashboard/calendar?appointmentId=${result.appointmentId}`,
       metadata: {
         appointmentId: result.appointmentId,
         customerEmail: result.customerEmail,

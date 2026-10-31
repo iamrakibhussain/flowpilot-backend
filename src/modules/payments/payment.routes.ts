@@ -10,6 +10,7 @@ const router = Router();
 // ==========================================
 router.get('/public/invoice/:token', PaymentController.getPublicInvoice);
 router.post('/public/checkout/:token', PaymentController.createCheckoutSession);
+router.post('/public/verify-session/:token', PaymentController.verifySession);
 router.post('/public/sandbox-pay/:token', PaymentController.settleSandbox);
 
 // ==========================================
