@@ -74,8 +74,12 @@ export class EmailService {
   public static async sendMail(
     options: SendMailOptions,
   ): Promise<{ success: boolean; messageId?: string }> {
-    // Defense-in-depth: Prevent CRLF header injection
-    if (/[\r\n]/.test(options.to) || /[\r\n]/.test(options.subject)) {
+    // Defense-in-depth: Prevent CRLF header injection in recipient, subject, or attachment filenames
+    if (
+      /[\r\n]/.test(options.to) ||
+      /[\r\n]/.test(options.subject) ||
+      Boolean(options.attachments?.some((a) => /[\r\n]/.test(a.filename)))
+    ) {
       logger.error(
         { event: 'email.crlf_detected', to: options.to },
         'Potential CRLF header injection detected in email dispatch. Aborting.',
