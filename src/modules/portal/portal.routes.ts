@@ -1,20 +1,12 @@
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
 import { PortalController } from './portal.controller.js';
 import { requirePortalAuth } from './portal.middleware.js';
-import {
-  getEmailDispatchRateLimitOptions,
-  getVerificationRateLimitOptions,
-} from '../../config/security.js';
 
 const router = Router();
 
-const linkDispatchLimiter = rateLimit(getEmailDispatchRateLimitOptions());
-const tokenVerifyLimiter = rateLimit(getVerificationRateLimitOptions());
-
 // Public Passwordless Access Routes
-router.post('/auth/request-link', linkDispatchLimiter, PortalController.requestLink);
-router.post('/auth/verify', tokenVerifyLimiter, PortalController.verifyToken);
+router.post('/auth/request-link', PortalController.requestLink);
+router.post('/auth/verify', PortalController.verifyToken);
 
 // Authenticated Client Portal Routes (Requires valid client session)
 const protectedRouter = Router();

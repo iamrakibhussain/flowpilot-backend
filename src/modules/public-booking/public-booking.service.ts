@@ -1,5 +1,7 @@
 import { prisma } from '../../database/prisma.js';
 import { NotFoundError, BadRequestError } from '../../common/errors/app-error.js';
+import { EmailService } from '../../common/email/email.service.js';
+import { NotificationService } from '../notifications/notification.service.js';
 import {
   PublicBookingInput,
   PublicBookingResult,
@@ -413,6 +415,34 @@ export class PublicBookingService {
         requireDeposit: service.requireDeposit,
         depositAmount,
       };
+    });
+
+    // 1. Dispatch confirmation email asynchronously (fire-and-forget safely)
+    EmailService.sendBookingConfirmationEmail({
+      to: result.customerEmail,
+      customerName: result.customerName,
+      serviceTitle: result.serviceName,
+      scheduledAt: new Date(result.scheduledAt),
+      durationMinutes: result.durationMinutes,
+      specialistName: result.staffName,
+      organizationName: org.name,
+    }).catch(() => {
+      // Handled inside EmailService
+    });
+
+    // 2. Persist in-app notification for the workspace staff
+    NotificationService.createNotification({
+      organizationId: org.id,
+      type: 'BOOKING_CREATED',
+      title: `New Online Booking: ${result.serviceName}`,
+      message: `${result.customerName} booked ${result.serviceName} for ${new Date(result.scheduledAt).toLocaleDateString()}${result.staffName ? ` with ${result.staffName}` : ''}.`,
+      actionUrl: `/dashboard/calendar?appointmentId=${result.appointmentId}`,
+      metadata: {
+        appointmentId: result.appointmentId,
+        customerEmail: result.customerEmail,
+      },
+    }).catch(() => {
+      // Handled inside NotificationService
     });
 
     return result;

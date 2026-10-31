@@ -79,6 +79,21 @@ describe('Security Hardening & Defense-in-Depth Verification Suite', () => {
       );
       expect(result).toBe(false);
     });
+
+    it('rejects SMTP CRLF header injection attempts in attachment filenames', async () => {
+      const maliciousAttachment = {
+        filename: 'invoice.pdf\r\nContent-Type: application/evil',
+        content: 'malicious',
+      };
+      const result = await EmailService.sendMail({
+        to: 'victim@flowpilot.test',
+        subject: 'Invoice Attached',
+        html: '<p>Invoice</p>',
+        text: 'Invoice',
+        attachments: [maliciousAttachment],
+      });
+      expect(result.success).toBe(false);
+    });
   });
 
   describe('SEC-02: Tenant Isolation Middleware Secure-by-Default Enforcement', () => {
@@ -210,6 +225,28 @@ describe('Security Hardening & Defense-in-Depth Verification Suite', () => {
 
       // The 6th or 7th request must be rate limited with HTTP 429
       expect(responses).toContain(429);
+    });
+
+    it('applies rate limit headers to public booking when rate limiting is enabled', async () => {
+      const rateLimitedApp = createApp({ enableRateLimiting: true });
+
+      const res = await request(rateLimitedApp)
+        .post('/api/v1/public/booking/apex-studio/book')
+        .set('Content-Type', 'application/json')
+        .send({});
+
+      expect(res.headers).toHaveProperty('ratelimit');
+    });
+
+    it('applies rate limit headers to client portal auth when rate limiting is enabled', async () => {
+      const rateLimitedApp = createApp({ enableRateLimiting: true });
+
+      const res = await request(rateLimitedApp)
+        .post('/api/v1/portal/auth/request-link')
+        .set('Content-Type', 'application/json')
+        .send({});
+
+      expect(res.headers).toHaveProperty('ratelimit');
     });
   });
 

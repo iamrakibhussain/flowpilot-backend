@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { prisma } from '../../database/prisma.js';
 import { generateSessionToken, hashSessionToken } from '../auth/crypto.js';
 import { EmailService } from '../../common/email/email.service.js';
+import { NotificationService } from '../notifications/notification.service.js';
 import {
   BadRequestError,
   NotFoundError,
@@ -489,6 +490,15 @@ export class PortalService {
       'Client rescheduled appointment via portal',
     );
 
+    NotificationService.createNotification({
+      organizationId,
+      type: 'BOOKING_RESCHEDULED',
+      title: `Booking Rescheduled: ${updated.service?.name || 'Appointment'}`,
+      message: `Client rescheduled appointment to ${newStart.toLocaleDateString()} at ${newStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
+      actionUrl: `/dashboard/calendar?appointmentId=${appointment.id}`,
+      metadata: { appointmentId: appointment.id, customerId },
+    }).catch(() => {});
+
     return updated;
   }
 
@@ -509,6 +519,7 @@ export class PortalService {
       },
       include: {
         organization: true,
+        service: true,
       },
     });
 
@@ -546,6 +557,15 @@ export class PortalService {
       },
       'Client cancelled appointment via portal',
     );
+
+    NotificationService.createNotification({
+      organizationId,
+      type: 'BOOKING_CANCELLED',
+      title: `Booking Cancelled: ${appointment.service?.name || appointment.title || 'Appointment'}`,
+      message: `Client cancelled appointment. Reason: ${input.reason.trim()}${isLateCancellation ? ' (Late cancellation)' : ''}.`,
+      actionUrl: `/dashboard/calendar?appointmentId=${appointment.id}`,
+      metadata: { appointmentId: appointment.id, customerId, isLateCancellation },
+    }).catch(() => {});
 
     return {
       ...updated,

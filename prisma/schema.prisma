@@ -73,6 +73,17 @@ enum TransactionStatus {
   REFUNDED
 }
 
+enum NotificationType {
+  BOOKING_CREATED
+  BOOKING_RESCHEDULED
+  BOOKING_CANCELLED
+  INVOICE_ISSUED
+  PAYMENT_RECEIVED
+  TEAM_INVITE
+  SECURITY_ALERT
+  SYSTEM
+}
+
 model User {
   id              String     @id @default(uuid())
   email           String     @unique
@@ -89,6 +100,7 @@ model User {
   emailVerificationCodes EmailVerificationCode[]
   staffMembers           StaffMember[]
   sentInvitations        OrganizationInvitation[] @relation("SentInvitations")
+  notifications          Notification[]
 
   @@map("users")
 }
@@ -145,6 +157,7 @@ model Organization {
   customerPortalSessions CustomerPortalSession[]
   invitations         OrganizationInvitation[]
   auditLogs           WorkspaceAuditLog[]
+  notifications       Notification[]
 
   @@map("organizations")
 }
@@ -324,6 +337,7 @@ model Appointment {
   notes           String?
   depositPaid     Boolean           @default(false) @map("deposit_paid")
   depositAmount   Decimal?          @map("deposit_amount") @db.Decimal(10, 2)
+  reminderSentAt  DateTime?         @map("reminder_sent_at")
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
@@ -514,4 +528,25 @@ model CustomerPortalSession {
   @@index([sessionHash])
   @@index([expiresAt])
   @@map("customer_portal_sessions")
+}
+
+model Notification {
+  id             String           @id @default(uuid())
+  organizationId String           @map("organization_id")
+  userId         String?          @map("user_id")
+  type           NotificationType @default(SYSTEM)
+  title          String
+  message        String
+  actionUrl      String?          @map("action_url")
+  isRead         Boolean          @default(false) @map("is_read")
+  readAt         DateTime?        @map("read_at")
+  metadata       Json?
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId, isRead])
+  @@index([organizationId, createdAt])
+  @@map("notifications")
 }

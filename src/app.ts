@@ -12,6 +12,7 @@ import {
   getVerificationRateLimitOptions,
   getPasswordActionRateLimitOptions,
   getPaymentRateLimitOptions,
+  getPublicBookingRateLimitOptions,
   parseTrustProxy,
 } from './config/security.js';
 import { requestIdMiddleware } from './common/middleware/request-id.js';
@@ -122,6 +123,11 @@ export function createApp(options: AppOptions = { enableRateLimiting: true }): E
     app.use('/api/v1/auth/change-password', rateLimit(getPasswordActionRateLimitOptions()));
     app.use('/api/v1/auth/account', rateLimit(getPasswordActionRateLimitOptions()));
     app.use('/api/v1/payments/public', rateLimit(getPaymentRateLimitOptions()));
+    app.use('/api/v1/public/booking', rateLimit(getPublicBookingRateLimitOptions()));
+    app.use('/api/v1/portal/auth/request-link', rateLimit(getEmailDispatchRateLimitOptions()));
+    app.use('/api/v1/portal/auth/verify', rateLimit(getVerificationRateLimitOptions()));
+    app.use('/api/v1/notifications/test-email', rateLimit(getEmailDispatchRateLimitOptions()));
+    app.use('/api/v1/invoices/:id/send-email', rateLimit(getEmailDispatchRateLimitOptions()));
   }
 
   // 8. API v1 route mount
