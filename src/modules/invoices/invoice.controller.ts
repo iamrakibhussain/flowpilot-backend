@@ -185,4 +185,22 @@ export class InvoiceController {
       next(err);
     }
   }
+
+  /**
+   * POST /api/v1/invoices/:id/send-email
+   */
+  public static async sendEmail(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const organizationId = req.tenant!.organizationId;
+      const id = req.params.id;
+      if (!id) {
+        throw new BadRequestError('Invoice ID is required');
+      }
+
+      const result = await InvoiceService.sendInvoiceEmail(organizationId, id);
+      sendSuccess(res, result, 200);
+    } catch (err) {
+      next(err);
+    }
+  }
 }

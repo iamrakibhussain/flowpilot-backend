@@ -13,6 +13,7 @@ import { publicBookingRoutes } from '../modules/public-booking/public-booking.ro
 import { analyticsRoutes } from '../modules/analytics/analytics.routes.js';
 import { organizationRoutes } from '../modules/organizations/organization.routes.js';
 import { portalRoutes } from '../modules/portal/portal.routes.js';
+import { notificationRoutes } from '../modules/notifications/notification.routes.js';
 
 const router = Router();
 
@@ -30,5 +31,6 @@ router.use('/public/booking', publicBookingRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/organizations', organizationRoutes);
 router.use('/portal', portalRoutes);
+router.use('/notifications', notificationRoutes);
 
 export const v1Routes = router;

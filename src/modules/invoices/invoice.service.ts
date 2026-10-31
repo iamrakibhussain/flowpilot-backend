@@ -1,6 +1,10 @@
 import { InvoiceStatus, Prisma, Invoice, Customer, InvoiceItem } from '@prisma/client';
+import crypto from 'node:crypto';
 import { prisma } from '../../database/prisma.js';
 import { NotFoundError, BadRequestError } from '../../common/errors/app-error.js';
+import { EmailService } from '../../common/email/email.service.js';
+import { NotificationService } from '../notifications/notification.service.js';
+import { env } from '../../config/env.js';
 import {
   ListInvoicesQuery,
   CreateInvoiceInput,
@@ -584,5 +588,83 @@ export class InvoiceService {
     await prisma.invoice.delete({
       where: { id },
     });
+  }
+
+  /**
+   * Dispatches branded invoice statement directly to client's email (INV-08)
+   */
+  public static async sendInvoiceEmail(
+    organizationId: string,
+    id: string,
+  ): Promise<{ success: boolean; deliveredTo: string }> {
+    const invoice = await prisma.invoice.findFirst({
+      where: { id, organizationId },
+      include: {
+        customer: true,
+        items: true,
+        organization: true,
+      },
+    });
+
+    if (!invoice) {
+      throw new NotFoundError('Invoice not found');
+    }
+
+    if (!invoice.customer.email) {
+      throw new BadRequestError('Customer does not have a registered email address');
+    }
+
+    // Ensure payment token exists for 1-click online payment
+    let paymentToken = invoice.paymentToken;
+    if (!paymentToken) {
+      paymentToken = crypto.randomBytes(24).toString('hex');
+      const paymentTokenExpiry = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
+      await prisma.invoice.update({
+        where: { id: invoice.id },
+        data: {
+          paymentToken,
+          paymentTokenExpiry,
+        },
+      });
+    }
+
+    const payUrl = `${env.FRONTEND_URL}/pay/${paymentToken}`;
+
+    const sent = await EmailService.sendInvoiceStatementEmail({
+      to: invoice.customer.email,
+      customerName: invoice.customer.name,
+      invoiceNumber: invoice.invoiceNumber,
+      issueDate: invoice.issueDate,
+      dueDate: invoice.dueDate,
+      total: invoice.total.toString(),
+      currency: invoice.organization.currency || 'USD',
+      payUrl,
+      organizationName: invoice.organization.name,
+      brandColor: invoice.organization.brandColor,
+      items: invoice.items.map((it) => ({
+        description: it.description,
+        quantity: it.quantity,
+        amount: it.amount.toString(),
+      })),
+    });
+
+    if (!sent) {
+      throw new BadRequestError('Failed to dispatch invoice email via mail transport');
+    }
+
+    // Create audit notification in-app
+    await NotificationService.createNotification({
+      organizationId,
+      type: 'INVOICE_ISSUED',
+      title: `Invoice ${invoice.invoiceNumber} Sent`,
+      message: `Invoice ${invoice.invoiceNumber} (${invoice.organization.currency} ${invoice.total}) was delivered to ${invoice.customer.name} (${invoice.customer.email}).`,
+      actionUrl: `/dashboard/invoices`,
+      metadata: { invoiceId: invoice.id, customerId: invoice.customerId },
+    });
+
+    return {
+      success: true,
+      deliveredTo: invoice.customer.email,
+    };
   }
 }

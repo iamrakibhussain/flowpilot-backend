@@ -3,10 +3,11 @@ import { env } from './config/env.js';
 import { logger } from './common/logging/logger.js';
 import { disconnectDatabase } from './database/prisma.js';
 import { AuthService } from './modules/auth/auth.service.js';
+import { initReminderCron } from './modules/notifications/reminder.cron.js';
 
 const app = createApp();
 
-// FlowPilot Server Entry Point — Production Deliverability & Client Portal Enabled
+// FlowPilot Server Entry Point â€” Production Deliverability & Client Portal Enabled
 const server = app.listen(env.PORT, env.HOST, () => {
   logger.info(
     {
@@ -41,6 +42,12 @@ const tokenCleanupInterval = setInterval(
   60 * 60 * 1000,
 );
 tokenCleanupInterval.unref();
+
+// Periodic 24-hour advance appointment reminder cron
+const reminderInterval = initReminderCron();
+if (reminderInterval) {
+  reminderInterval.unref();
+}
 
 // Graceful shutdown handling
 let isShuttingDown = false;
