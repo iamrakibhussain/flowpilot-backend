@@ -195,6 +195,44 @@ export class AppointmentService {
       }
     }
 
+    // Check for blocked times and company holidays
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const blockedCandidates = await (prisma as any).blockedTime.findMany({
+      where: {
+        organizationId,
+        startTime: { lt: requestedEnd },
+        endTime: { gt: requestedStart },
+        OR: [
+          { staffMemberId: null },
+          { staffMemberId: input.staffMemberId },
+        ],
+      },
+      include: {
+        staffMember: { select: { name: true } },
+      },
+    });
+
+    if (blockedCandidates.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const block = blockedCandidates[0] as any;
+      const isCompanyHoliday = !block.staffMemberId;
+      return {
+        hasConflict: true,
+        conflictingAppointment: {
+          id: block.id,
+          title: `[${isCompanyHoliday ? 'Holiday' : 'Blocked'}: ${block.title}]`,
+          scheduledAt: block.startTime.toISOString(),
+          durationMinutes: Math.max(
+            15,
+            Math.round((block.endTime.getTime() - block.startTime.getTime()) / 60000),
+          ),
+          staffMemberName: isCompanyHoliday
+            ? 'Company Holiday / Office Closed'
+            : (block.staffMember?.name || 'Staff Leave'),
+        },
+      };
+    }
+
     return { hasConflict: false };
   }
 

@@ -200,3 +200,21 @@ export function getPaymentRateLimitOptions(): Partial<RateLimitOptions> {
     },
   };
 }
+
+export function getSchedulingActionRateLimitOptions(): Partial<RateLimitOptions> {
+  const isDev = env.NODE_ENV === 'development';
+  return {
+    windowMs: 15 * 60 * 1000,
+    max: isDev ? 1000 : 120,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: {
+        code: 'RATE_LIMITED',
+        message: 'Too many scheduling modification attempts, please try again shortly.',
+        status: 429,
+      },
+    },
+  };
+}
