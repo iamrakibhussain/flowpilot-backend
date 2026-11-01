@@ -153,47 +153,146 @@ export interface DeclineQuoteInput {
 
 // Zod validation schemas
 export const quoteItemSchema = z.object({
-  serviceId: z.string().uuid().nullable().optional(),
+  serviceId: z
+    .string()
+    .uuid()
+    .nullable()
+    .optional()
+    .or(z.literal(''))
+    .transform((val) => (val && val.length > 0 ? val : null)),
   description: z.string().trim().min(1, 'Item description is required').max(300),
-  quantity: z.number().int().min(1, 'Quantity must be at least 1').max(10000).default(1),
-  unitPrice: z.number().min(0, 'Unit price cannot be negative'),
-  sortOrder: z.number().int().optional().default(0),
+  quantity: z.coerce.number().int().min(1, 'Quantity must be at least 1').max(10000).default(1),
+  unitPrice: z.coerce.number().min(0, 'Unit price cannot be negative'),
+  sortOrder: z.coerce.number().int().optional().default(0),
 });
 
 export const createQuoteSchema = z.object({
-  customerId: z.string().uuid().optional(),
-  customerName: z.string().trim().min(1, 'Customer name is required').optional(),
-  customerEmail: z.string().email('Invalid email address').optional(),
-  customerPhone: z.string().trim().max(30).optional(),
-  customerCompany: z.string().trim().max(100).optional(),
+  customerId: z
+    .string()
+    .uuid()
+    .nullable()
+    .optional()
+    .or(z.literal(''))
+    .transform((val) => (val && val.length > 0 ? val : undefined)),
+  customerName: z
+    .string()
+    .trim()
+    .min(1, 'Customer name is required')
+    .nullable()
+    .optional()
+    .or(z.literal(''))
+    .transform((val) => (val && val.length > 0 ? val : undefined)),
+  customerEmail: z
+    .string()
+    .email('Invalid email address')
+    .nullable()
+    .optional()
+    .or(z.literal(''))
+    .transform((val) => (val && val.length > 0 ? val : undefined)),
+  customerPhone: z
+    .string()
+    .trim()
+    .max(30)
+    .nullable()
+    .optional()
+    .or(z.literal(''))
+    .transform((val) => (val && val.length > 0 ? val : undefined)),
+  customerCompany: z
+    .string()
+    .trim()
+    .max(100)
+    .nullable()
+    .optional()
+    .or(z.literal(''))
+    .transform((val) => (val && val.length > 0 ? val : undefined)),
   title: z
     .string()
     .trim()
     .min(2, 'Title must be at least 2 characters')
     .max(200)
     .default('Service Proposal & Estimate'),
-  introduction: z.string().trim().max(2000).optional(),
+  introduction: z
+    .string()
+    .trim()
+    .max(2000)
+    .nullable()
+    .optional()
+    .or(z.literal(''))
+    .transform((val) => (val && val.length > 0 ? val : null)),
   items: z.array(quoteItemSchema).min(1, 'At least one item is required'),
-  taxRate: z.number().min(0).max(100).default(0),
+  taxRate: z.coerce.number().min(0).max(100).default(0),
   discountType: z.enum(['FIXED', 'PERCENT']).default('FIXED'),
-  discountAmount: z.number().min(0).default(0),
-  expiresAt: z.string().datetime().optional().nullable(),
-  terms: z.string().trim().max(3000).optional(),
-  notes: z.string().trim().max(2000).optional(),
+  discountAmount: z.coerce.number().min(0).default(0),
+  expiresAt: z
+    .string()
+    .datetime()
+    .nullable()
+    .optional()
+    .or(z.literal(''))
+    .transform((val) => (val && val.length > 0 ? val : null)),
+  terms: z
+    .string()
+    .trim()
+    .max(3000)
+    .nullable()
+    .optional()
+    .or(z.literal(''))
+    .transform((val) => (val && val.length > 0 ? val : null)),
+  notes: z
+    .string()
+    .trim()
+    .max(2000)
+    .nullable()
+    .optional()
+    .or(z.literal(''))
+    .transform((val) => (val && val.length > 0 ? val : null)),
   status: QuoteStatusEnum.default('DRAFT'),
 });
 
 export const updateQuoteSchema = z.object({
-  customerId: z.string().uuid().optional(),
+  customerId: z
+    .string()
+    .uuid()
+    .nullable()
+    .optional()
+    .or(z.literal(''))
+    .transform((val) => (val && val.length > 0 ? val : undefined)),
   title: z.string().trim().min(2).max(200).optional(),
-  introduction: z.string().trim().max(2000).optional().nullable(),
+  introduction: z
+    .string()
+    .trim()
+    .max(2000)
+    .nullable()
+    .optional()
+    .or(z.literal(''))
+    .transform((val) => (val && val.length > 0 ? val : null)),
   items: z.array(quoteItemSchema).min(1).optional(),
-  taxRate: z.number().min(0).max(100).optional(),
+  taxRate: z.coerce.number().min(0).max(100).optional(),
   discountType: z.enum(['FIXED', 'PERCENT']).optional(),
-  discountAmount: z.number().min(0).optional(),
-  expiresAt: z.string().datetime().optional().nullable(),
-  terms: z.string().trim().max(3000).optional().nullable(),
-  notes: z.string().trim().max(2000).optional().nullable(),
+  discountAmount: z.coerce.number().min(0).optional(),
+  expiresAt: z
+    .string()
+    .datetime()
+    .nullable()
+    .optional()
+    .or(z.literal(''))
+    .transform((val) => (val && val.length > 0 ? val : null)),
+  terms: z
+    .string()
+    .trim()
+    .max(3000)
+    .nullable()
+    .optional()
+    .or(z.literal(''))
+    .transform((val) => (val && val.length > 0 ? val : null)),
+  notes: z
+    .string()
+    .trim()
+    .max(2000)
+    .nullable()
+    .optional()
+    .or(z.literal(''))
+    .transform((val) => (val && val.length > 0 ? val : null)),
   status: QuoteStatusEnum.optional(),
 });
 
