@@ -13,6 +13,7 @@ import {
   getPasswordActionRateLimitOptions,
   getPaymentRateLimitOptions,
   getPublicBookingRateLimitOptions,
+  getPublicQuoteRateLimitOptions,
   getSchedulingActionRateLimitOptions,
   parseTrustProxy,
 } from './config/security.js';
@@ -125,10 +126,12 @@ export function createApp(options: AppOptions = { enableRateLimiting: true }): E
     app.use('/api/v1/auth/account', rateLimit(getPasswordActionRateLimitOptions()));
     app.use('/api/v1/payments/public', rateLimit(getPaymentRateLimitOptions()));
     app.use('/api/v1/public/booking', rateLimit(getPublicBookingRateLimitOptions()));
+    app.use('/api/v1/public/quotes', rateLimit(getPublicQuoteRateLimitOptions()));
     app.use('/api/v1/portal/auth/request-link', rateLimit(getEmailDispatchRateLimitOptions()));
     app.use('/api/v1/portal/auth/verify', rateLimit(getVerificationRateLimitOptions()));
     app.use('/api/v1/notifications/test-email', rateLimit(getEmailDispatchRateLimitOptions()));
     app.use('/api/v1/invoices/:id/send-email', rateLimit(getEmailDispatchRateLimitOptions()));
+    app.use('/api/v1/quotes/:id/send', rateLimit(getEmailDispatchRateLimitOptions()));
     app.use('/api/v1/staff/blocked-time', rateLimit(getSchedulingActionRateLimitOptions()));
   }
 

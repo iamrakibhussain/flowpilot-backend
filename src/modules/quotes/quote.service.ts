@@ -897,6 +897,29 @@ export class QuoteService {
     }
 
     const quote = tokenRecord.quote;
+    const now = new Date();
+
+    // Security & Compliance: Verify expiry
+    const isExpired =
+      new Date(tokenRecord.expiresAt).getTime() < now.getTime() ||
+      Boolean(quote.expiresAt && new Date(quote.expiresAt).getTime() < now.getTime()) ||
+      quote.status === 'EXPIRED';
+
+    if (isExpired && quote.status !== 'ACCEPTED') {
+      await prismaQuotes.quote.update({
+        where: { id: quote.id },
+        data: { status: 'EXPIRED' },
+      });
+      throw new BadRequestError(
+        'This proposal has expired and can no longer be accepted. Please contact the sender for an updated estimate.',
+      );
+    }
+
+    if (quote.status === 'DECLINED') {
+      throw new BadRequestError(
+        'This proposal was previously declined. Please contact the sender for a revised proposal.',
+      );
+    }
 
     if (quote.status === 'ACCEPTED') {
       return {
@@ -973,6 +996,13 @@ export class QuoteService {
     }
 
     const quote = tokenRecord.quote;
+
+    if (quote.status === 'ACCEPTED') {
+      throw new BadRequestError(
+        'This proposal has already been digitally accepted and cannot be declined.',
+      );
+    }
+
     const declinedAt = new Date();
 
     await prismaQuotes.quote.update({

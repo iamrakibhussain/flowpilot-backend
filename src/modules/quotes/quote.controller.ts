@@ -6,6 +6,7 @@ import {
   updateQuoteSchema,
   acceptQuoteSchema,
   declineQuoteSchema,
+  quoteTokenParamSchema,
   ListQuotesQuery,
   QuoteStatus,
 } from './quote.types.js';
@@ -147,7 +148,7 @@ export class QuoteController {
    */
   public static async getPublic(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const token = req.params.token as string;
+      const token = quoteTokenParamSchema.parse(req.params.token);
       const quote = await QuoteService.getPublicQuote(token);
       sendSuccess(res, quote);
     } catch (err) {
@@ -160,7 +161,7 @@ export class QuoteController {
    */
   public static async acceptPublic(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const token = req.params.token as string;
+      const token = quoteTokenParamSchema.parse(req.params.token);
       const validated = acceptQuoteSchema.parse(req.body);
       const ip = req.ip || req.headers['x-forwarded-for']?.toString() || req.socket.remoteAddress;
 
@@ -180,7 +181,7 @@ export class QuoteController {
     next: NextFunction,
   ): Promise<void> {
     try {
-      const token = req.params.token as string;
+      const token = quoteTokenParamSchema.parse(req.params.token);
       const validated = declineQuoteSchema.parse(req.body);
 
       const result = await QuoteService.declinePublicQuote(token, validated);
