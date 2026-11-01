@@ -299,7 +299,9 @@ export const updateQuoteSchema = z.object({
 export const quoteTokenParamSchema = z
   .string()
   .trim()
-  .regex(/^[a-fA-F0-9]{64}$/, 'Invalid proposal token format');
+  .min(8, 'Token is required')
+  .max(128, 'Token is too long')
+  .regex(/^[a-zA-Z0-9_-]+$/, 'Invalid proposal token format');
 
 export const acceptQuoteSchema = z.object({
   signerName: z.string().trim().min(2, 'Signer name is required').max(100),
@@ -307,15 +309,7 @@ export const acceptQuoteSchema = z.object({
   signatureData: z
     .string()
     .min(5, 'Digital signature is required')
-    .max(200000, 'Signature payload exceeds safe limit')
-    .refine(
-      (val) =>
-        val.startsWith('data:image/png;base64,') ||
-        val.startsWith('data:image/jpeg;base64,') ||
-        val.startsWith('data:image/svg+xml;base64,') ||
-        /^[a-zA-Z0-9\s.,'_-]+$/.test(val),
-      { message: 'Invalid or unsafe signature format' },
-    ),
+    .max(200000, 'Signature payload exceeds safe limit'),
   clientNotes: z.string().trim().max(1000).optional().nullable(),
 });
 
