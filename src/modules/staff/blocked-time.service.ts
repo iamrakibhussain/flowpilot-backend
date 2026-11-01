@@ -49,10 +49,7 @@ export class BlockedTimeService {
 
     if (query.staffMemberId) {
       // Include both the specific staff member's blocks AND organization-wide holidays
-      whereClause.OR = [
-        { staffMemberId: query.staffMemberId },
-        { staffMemberId: null },
-      ];
+      whereClause.OR = [{ staffMemberId: query.staffMemberId }, { staffMemberId: null }];
     }
 
     if (query.startDate || query.endDate) {
@@ -140,12 +137,16 @@ export class BlockedTimeService {
       });
 
       if (!staff) {
-        throw new NotFoundError(`Staff member with ID '${input.staffMemberId}' not found in this organization`);
+        throw new NotFoundError(
+          `Staff member with ID '${input.staffMemberId}' not found in this organization`,
+        );
       }
 
       // IDOR Defense: If actor is a MEMBER, they can ONLY block time for their own linked staff account
       if (actor.role === 'MEMBER' && staff.userId !== actor.id) {
-        throw new ForbiddenError('Team members are only authorized to block time for their own schedule');
+        throw new ForbiddenError(
+          'Team members are only authorized to block time for their own schedule',
+        );
       }
 
       targetStaffMemberId = staff.id;
@@ -170,7 +171,9 @@ export class BlockedTimeService {
           {
             OR: [
               ...(targetStaffMemberId ? [{ staffMemberId: targetStaffMemberId }] : []),
-              ...(!targetStaffMemberId ? [{ staffMemberId: null }, { staffMemberId: { not: null } }] : []),
+              ...(!targetStaffMemberId
+                ? [{ staffMemberId: null }, { staffMemberId: { not: null } }]
+                : []),
             ],
           },
         ],
@@ -200,13 +203,17 @@ export class BlockedTimeService {
     });
 
     // 5. Immutable audit logging
-    const targetDesc = targetStaffName ? `for specialist "${targetStaffName}"` : 'workspace-wide (Office Closure)';
+    const targetDesc = targetStaffName
+      ? `for specialist "${targetStaffName}"`
+      : 'workspace-wide (Office Closure)';
     await this.recordAuditLog(
       organizationId,
       actor,
       'BLOCKED_TIME_CREATED',
       `Created ${input.type} block "${input.title}" ${targetDesc} from ${startTime.toISOString()} to ${endTime.toISOString()}${
-        affectedAppointments > 0 ? ` (Note: ${affectedAppointments} existing appointments overlap)` : ''
+        affectedAppointments > 0
+          ? ` (Note: ${affectedAppointments} existing appointments overlap)`
+          : ''
       }`,
     );
 
@@ -263,7 +270,8 @@ export class BlockedTimeService {
 
     // Authorization Guard:
     // If company-wide holiday or being converted to one, require OWNER or ADMIN
-    const isCompanyHoliday = !existing.staffMemberId || input.type === 'COMPANY_HOLIDAY' || input.staffMemberId === null;
+    const isCompanyHoliday =
+      !existing.staffMemberId || input.type === 'COMPANY_HOLIDAY' || input.staffMemberId === null;
     if (isCompanyHoliday && actor.role !== 'OWNER' && actor.role !== 'ADMIN') {
       throw new ForbiddenError('Only organization Owners or Admins can modify company-wide blocks');
     }
@@ -271,7 +279,9 @@ export class BlockedTimeService {
     // IDOR Guard: If caller is MEMBER, ensure they own the existing staff record AND target staff record
     if (actor.role === 'MEMBER') {
       if (existing.staffMember?.userId !== actor.id) {
-        throw new ForbiddenError('You do not have permission to modify another team member’s blocked time');
+        throw new ForbiddenError(
+          'You do not have permission to modify another team member’s blocked time',
+        );
       }
       if (input.staffMemberId && input.staffMemberId !== existing.staffMemberId) {
         throw new ForbiddenError('Members cannot reassign blocked time to other staff');
@@ -301,7 +311,8 @@ export class BlockedTimeService {
     const updated = await (prisma as any).blockedTime.update({
       where: { id },
       data: {
-        staffMemberId: input.staffMemberId !== undefined ? input.staffMemberId : existing.staffMemberId,
+        staffMemberId:
+          input.staffMemberId !== undefined ? input.staffMemberId : existing.staffMemberId,
         title: input.title !== undefined ? input.title : existing.title,
         type: input.type !== undefined ? input.type : existing.type,
         startTime,
@@ -377,12 +388,16 @@ export class BlockedTimeService {
 
     // Role Guard: Company-wide holiday removal requires OWNER or ADMIN
     if (!existing.staffMemberId && actor.role !== 'OWNER' && actor.role !== 'ADMIN') {
-      throw new ForbiddenError('Only organization Owners or Admins can remove company-wide holidays');
+      throw new ForbiddenError(
+        'Only organization Owners or Admins can remove company-wide holidays',
+      );
     }
 
     // IDOR Guard: Member can only delete their own time-off
     if (actor.role === 'MEMBER' && existing.staffMember?.userId !== actor.id) {
-      throw new ForbiddenError('You do not have permission to delete another team member’s blocked time');
+      throw new ForbiddenError(
+        'You do not have permission to delete another team member’s blocked time',
+      );
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

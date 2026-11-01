@@ -36,7 +36,6 @@ describe('Staff Blocked Time & Availability Module Integration Suite', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mockSession(ownerUserId, 'OWNER');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.spyOn(prisma.workspaceAuditLog, 'create').mockResolvedValue({} as any);
   });
 
@@ -79,7 +78,6 @@ describe('Staff Blocked Time & Availability Module Integration Suite', () => {
       staffMember: null,
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (prisma as any).blockedTime = {
       create: vi.fn().mockResolvedValue(mockCreated),
     };
@@ -152,7 +150,9 @@ describe('Staff Blocked Time & Availability Module Integration Suite', () => {
     expect(res.status).toBe(403);
     expect(res.body.success).toBe(false);
     expect(res.body.error.code).toBe('FORBIDDEN');
-    expect(res.body.error.message).toContain('only authorized to block time for their own schedule');
+    expect(res.body.error.message).toContain(
+      'only authorized to block time for their own schedule',
+    );
   });
 
   it('forbids BILLING role from modifying schedule', async () => {
@@ -178,7 +178,6 @@ describe('Staff Blocked Time & Availability Module Integration Suite', () => {
     const app = createTestApp();
 
     let capturedCreateData: any = null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (prisma as any).blockedTime = {
       create: vi.fn().mockImplementation(({ data }) => {
         capturedCreateData = data;

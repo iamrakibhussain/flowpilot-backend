@@ -202,10 +202,7 @@ export class AppointmentService {
         organizationId,
         startTime: { lt: requestedEnd },
         endTime: { gt: requestedStart },
-        OR: [
-          { staffMemberId: null },
-          { staffMemberId: input.staffMemberId },
-        ],
+        OR: [{ staffMemberId: null }, { staffMemberId: input.staffMemberId }],
       },
       include: {
         staffMember: { select: { name: true } },
@@ -228,7 +225,7 @@ export class AppointmentService {
           ),
           staffMemberName: isCompanyHoliday
             ? 'Company Holiday / Office Closed'
-            : (block.staffMember?.name || 'Staff Leave'),
+            : block.staffMember?.name || 'Staff Leave',
         },
       };
     }

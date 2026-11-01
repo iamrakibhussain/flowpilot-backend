@@ -198,24 +198,31 @@ export class PublicBookingService {
     const queryWindowEnd = new Date(endOfDay.getTime() + 24 * 60 * 60 * 1000);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const blockedTimes = (prisma as any).blockedTime?.findMany
-      ? await (prisma as any).blockedTime.findMany({
-      where: {
-        organizationId: org.id,
-        startTime: { lte: queryWindowEnd },
-        endTime: { gte: queryWindowStart },
-        OR: [
-          { staffMemberId: null },
-          { staffMemberId: { in: availableStaffForDay.map((s) => s.id) } },
-        ],
-      },
-      select: {
-        staffMemberId: true,
-        startTime: true,
-        endTime: true,
-        allDay: true,
-      },
-    })
+    const prismaWithBlocked = prisma as any;
+    interface BlockedSlotRecord {
+      staffMemberId: string | null;
+      startTime: Date;
+      endTime: Date;
+      allDay: boolean;
+    }
+    const blockedTimes: BlockedSlotRecord[] = prismaWithBlocked.blockedTime?.findMany
+      ? await prismaWithBlocked.blockedTime.findMany({
+          where: {
+            organizationId: org.id,
+            startTime: { lte: queryWindowEnd },
+            endTime: { gte: queryWindowStart },
+            OR: [
+              { staffMemberId: null },
+              { staffMemberId: { in: availableStaffForDay.map((s) => s.id) } },
+            ],
+          },
+          select: {
+            staffMemberId: true,
+            startTime: true,
+            endTime: true,
+            allDay: true,
+          },
+        })
       : [];
 
     // Slot interval (30 min steps)
@@ -254,9 +261,8 @@ export class PublicBookingService {
           return windowStart < apptEndMin && windowEnd > apptStartMin;
         });
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const staffBlocks = blockedTimes.filter(
-          (b: any) => b.staffMemberId === null || b.staffMemberId === staff.id,
+          (b) => b.staffMemberId === null || b.staffMemberId === staff.id,
         );
 
         const slotStartUtc = new Date(`${dateStr}T00:00:00Z`);
@@ -264,8 +270,7 @@ export class PublicBookingService {
         const slotEndUtc = new Date(`${dateStr}T00:00:00Z`);
         slotEndUtc.setUTCMinutes(slotEndMin);
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const isBlocked = staffBlocks.some((b: any) => {
+        const isBlocked = staffBlocks.some((b) => {
           if (b.allDay) {
             const bStartDay = b.startTime.toISOString().slice(0, 10);
             const bEndDay = b.endTime.toISOString().slice(0, 10);
@@ -434,16 +439,14 @@ export class PublicBookingService {
 
       // Verify slot is not blocked by staff time-off or organization holiday
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const conflictBlock = (tx as any).blockedTime?.findFirst
-        ? await (tx as any).blockedTime.findFirst({
+      const txWithBlocked = tx as any;
+      const conflictBlock = txWithBlocked.blockedTime?.findFirst
+        ? await txWithBlocked.blockedTime.findFirst({
             where: {
               organizationId: org.id,
               startTime: { lt: appointmentEndTime },
               endTime: { gt: scheduledAt },
-              OR: [
-                { staffMemberId: null },
-                ...(staff?.id ? [{ staffMemberId: staff.id }] : []),
-              ],
+              OR: [{ staffMemberId: null }, ...(staff?.id ? [{ staffMemberId: staff.id }] : [])],
             },
           })
         : null;

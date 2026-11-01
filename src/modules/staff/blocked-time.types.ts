@@ -14,10 +14,13 @@ export type BlockedTimeType = z.infer<typeof BlockedTimeTypeEnum>;
 
 // Security helper: strip dangerous HTML tags and control characters to prevent stored XSS
 function sanitizeString(str: string): string {
-  return str
-    .replace(/[<>]/g, '') // Strip angle brackets
-    .replace(/[\u0000-\u001F\u007F]/g, '') // Strip ASCII control characters
-    .trim();
+  return (
+    str
+      .replace(/[<>]/g, '') // Strip angle brackets
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u001F\u007F]/g, '') // Strip ASCII control characters
+      .trim()
+  );
 }
 
 export const createBlockedTimeSchema = z
