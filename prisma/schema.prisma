@@ -73,6 +73,15 @@ enum TransactionStatus {
   REFUNDED
 }
 
+enum BlockedTimeType {
+  VACATION
+  SICK_LEAVE
+  BREAK
+  COMPANY_HOLIDAY
+  TRAINING
+  OTHER
+}
+
 enum NotificationType {
   BOOKING_CREATED
   BOOKING_RESCHEDULED
@@ -158,6 +167,7 @@ model Organization {
   invitations         OrganizationInvitation[]
   auditLogs           WorkspaceAuditLog[]
   notifications       Notification[]
+  blockedTimes        BlockedTime[]
 
   @@map("organizations")
 }
@@ -301,6 +311,7 @@ model StaffMember {
   appointments Appointment[]
   services     StaffService[]
   invitations  OrganizationInvitation[]
+  blockedTimes BlockedTime[]
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -549,4 +560,25 @@ model Notification {
   @@index([organizationId, userId, isRead])
   @@index([organizationId, createdAt])
   @@map("notifications")
+}
+
+model BlockedTime {
+  id              String          @id @default(uuid())
+  organizationId  String          @map("organization_id")
+  staffMemberId   String?         @map("staff_member_id")
+  title           String
+  type            BlockedTimeType @default(BREAK)
+  startTime       DateTime        @map("start_time")
+  endTime         DateTime        @map("end_time")
+  allDay          Boolean         @default(false) @map("all_day")
+  notes           String?
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  staffMember     StaffMember?    @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, startTime, endTime])
+  @@index([organizationId, staffMemberId, startTime])
+  @@map("blocked_times")
 }

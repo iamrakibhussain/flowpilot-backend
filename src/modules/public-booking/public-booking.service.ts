@@ -193,6 +193,38 @@ export class PublicBookingService {
       },
     });
 
+    // Timezone-resilient query window (+/- 24 hours buffer) for blocked intervals & company holidays
+    const queryWindowStart = new Date(startOfDay.getTime() - 24 * 60 * 60 * 1000);
+    const queryWindowEnd = new Date(endOfDay.getTime() + 24 * 60 * 60 * 1000);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const prismaWithBlocked = prisma as any;
+    interface BlockedSlotRecord {
+      staffMemberId: string | null;
+      startTime: Date;
+      endTime: Date;
+      allDay: boolean;
+    }
+    const blockedTimes: BlockedSlotRecord[] = prismaWithBlocked.blockedTime?.findMany
+      ? await prismaWithBlocked.blockedTime.findMany({
+          where: {
+            organizationId: org.id,
+            startTime: { lte: queryWindowEnd },
+            endTime: { gte: queryWindowStart },
+            OR: [
+              { staffMemberId: null },
+              { staffMemberId: { in: availableStaffForDay.map((s) => s.id) } },
+            ],
+          },
+          select: {
+            staffMemberId: true,
+            startTime: true,
+            endTime: true,
+            allDay: true,
+          },
+        })
+      : [];
+
     // Slot interval (30 min steps)
     const slotStepMinutes = 30;
     const duration = service.durationMinutes;
@@ -229,7 +261,25 @@ export class PublicBookingService {
           return windowStart < apptEndMin && windowEnd > apptStartMin;
         });
 
-        if (!hasConflict) {
+        const staffBlocks = blockedTimes.filter(
+          (b) => b.staffMemberId === null || b.staffMemberId === staff.id,
+        );
+
+        const slotStartUtc = new Date(`${dateStr}T00:00:00Z`);
+        slotStartUtc.setUTCMinutes(slotStartMin);
+        const slotEndUtc = new Date(`${dateStr}T00:00:00Z`);
+        slotEndUtc.setUTCMinutes(slotEndMin);
+
+        const isBlocked = staffBlocks.some((b) => {
+          if (b.allDay) {
+            const bStartDay = b.startTime.toISOString().slice(0, 10);
+            const bEndDay = b.endTime.toISOString().slice(0, 10);
+            return dateStr >= bStartDay && dateStr <= bEndDay;
+          }
+          return slotStartUtc < b.endTime && slotEndUtc > b.startTime;
+        });
+
+        if (!hasConflict && !isBlocked) {
           const timeString = minutesToTimeString(slotStartMin);
           if (!slotsMap.has(timeString)) {
             slotsMap.set(timeString, new Set());
@@ -383,6 +433,28 @@ export class PublicBookingService {
           where: { id: customer.id },
           data: { phone: input.customerPhone.trim() },
         });
+      }
+
+      const appointmentEndTime = new Date(scheduledAt.getTime() + service.durationMinutes * 60000);
+
+      // Verify slot is not blocked by staff time-off or organization holiday
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const txWithBlocked = tx as any;
+      const conflictBlock = txWithBlocked.blockedTime?.findFirst
+        ? await txWithBlocked.blockedTime.findFirst({
+            where: {
+              organizationId: org.id,
+              startTime: { lt: appointmentEndTime },
+              endTime: { gt: scheduledAt },
+              OR: [{ staffMemberId: null }, ...(staff?.id ? [{ staffMemberId: staff.id }] : [])],
+            },
+          })
+        : null;
+
+      if (conflictBlock) {
+        throw new BadRequestError(
+          `This appointment slot is unavailable due to "${conflictBlock.title}". Please choose another slot.`,
+        );
       }
 
       const appointment = await tx.appointment.create({
