@@ -27,4 +27,3 @@ router.patch('/:id/tasks/:taskId/checklist/:itemId', ProjectController.updateChe
 router.delete('/:id/tasks/:taskId/checklist/:itemId', ProjectController.deleteChecklistItem);
 
 export const projectRoutes = router;
-
