@@ -4,6 +4,9 @@ import { prisma } from '../../database/prisma.js';
 import { NotFoundError, BadRequestError } from '../../common/errors/app-error.js';
 import { InvoiceStatus, TransactionStatus, Prisma } from '@prisma/client';
 import { logger } from '../../common/logging/logger.js';
+import { NotificationService } from '../notifications/notification.service.js';
+import { EmailService } from '../../common/email/email.service.js';
+import { env } from '../../config/env.js';
 import {
   PublicInvoiceResponse,
   CreateCheckoutSessionInput,
@@ -14,6 +17,64 @@ import {
 } from './payment.types.js';
 
 export class PaymentService {
+  /**
+   * Helper to dispatch in-app notification & customer receipt email upon successful settlement
+   */
+  private static async dispatchSettlementNotifications(params: {
+    organizationId: string;
+    customerId: string;
+    customerEmail?: string | null;
+    customerName: string;
+    invoiceId: string;
+    invoiceNumber: string;
+    organizationName: string;
+    brandColor?: string | null;
+    currency: string;
+    amount: number;
+    provider: string;
+    paymentMethod: string;
+    transactionReference?: string | null;
+    paymentToken?: string | null;
+  }) {
+    // 1. In-App Notification for business staff/admin
+    NotificationService.createNotification({
+      organizationId: params.organizationId,
+      type: 'PAYMENT_RECEIVED',
+      title: `Payment Received: Invoice ${params.invoiceNumber}`,
+      message: `${params.currency} $${params.amount.toFixed(2)} was successfully settled by ${params.customerName} via ${params.provider}.`,
+      actionUrl: '/dashboard/payments',
+      metadata: {
+        invoiceId: params.invoiceId,
+        customerId: params.customerId,
+        amount: params.amount,
+        reference: params.transactionReference,
+      },
+    }).catch((err) => {
+      logger.error({ err }, 'Failed to dispatch in-app payment notification');
+    });
+
+    // 2. Branded receipt email to customer
+    if (params.customerEmail && params.customerEmail.includes('@')) {
+      const receiptUrl = params.paymentToken
+        ? `${env.FRONTEND_URL}/pay/${params.paymentToken}`
+        : `${env.FRONTEND_URL}/dashboard/invoices`;
+
+      EmailService.sendPaymentReceiptEmail({
+        to: params.customerEmail,
+        customerName: params.customerName,
+        invoiceNumber: params.invoiceNumber,
+        organizationName: params.organizationName,
+        brandColor: params.brandColor,
+        amount: params.amount,
+        currency: params.currency,
+        paymentMethod: params.paymentMethod,
+        transactionReference: params.transactionReference,
+        receiptUrl,
+      }).catch((err) => {
+        logger.error({ err }, 'Failed to dispatch payment receipt email');
+      });
+    }
+  }
   /**
    * Resolve Stripe SDK instance strictly for an organization's configured API key
    */
@@ -340,6 +401,23 @@ export class PaymentService {
           'Invoice verified and marked as PAID via checkout session reconciliation',
         );
 
+        this.dispatchSettlementNotifications({
+          organizationId: invoice.organizationId,
+          customerId: invoice.customerId,
+          customerEmail: invoice.customer?.email,
+          customerName: invoice.customer?.name || 'Valued Client',
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          organizationName: invoice.organization.name,
+          brandColor: invoice.organization.paymentSettings?.defaultCurrency ? null : null,
+          currency: (session.currency || 'USD').toUpperCase(),
+          amount: amountTotal,
+          provider: 'STRIPE',
+          paymentMethod: 'stripe_checkout',
+          transactionReference: paymentIntentId || session.id,
+          paymentToken: invoice.paymentToken,
+        });
+
         return {
           success: true,
           reconciled: true,
@@ -444,6 +522,22 @@ export class PaymentService {
       'Invoice settled successfully via sandbox payment checkout',
     );
 
+    this.dispatchSettlementNotifications({
+      organizationId: invoice.organizationId,
+      customerId: invoice.customerId,
+      customerEmail: invoice.customer?.email,
+      customerName: invoice.customer?.name || 'Valued Client',
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      organizationName: invoice.organization.name,
+      currency: 'USD',
+      amount: Number(invoice.total),
+      provider: 'FLOWPILOT_SANDBOX',
+      paymentMethod,
+      transactionReference: transactionRef,
+      paymentToken: invoice.paymentToken,
+    });
+
     return {
       success: true,
       invoiceNumber: updatedInvoice.invoiceNumber,
@@ -521,6 +615,7 @@ export class PaymentService {
 
       const invoice = await prisma.invoice.findUnique({
         where: { id: invoiceId },
+        include: { customer: true, organization: true },
       });
 
       if (!invoice) {
@@ -566,6 +661,22 @@ export class PaymentService {
         { invoiceId, invoiceNumber: invoice.invoiceNumber, eventId: event.id },
         'Invoice successfully settled via Stripe Webhook',
       );
+
+      this.dispatchSettlementNotifications({
+        organizationId: organizationId || invoice.organizationId,
+        customerId: customerId || invoice.customerId,
+        customerEmail: invoice.customer?.email,
+        customerName: invoice.customer?.name || 'Valued Client',
+        invoiceId,
+        invoiceNumber: invoice.invoiceNumber,
+        organizationName: invoice.organization.name,
+        currency: (session.currency || 'USD').toUpperCase(),
+        amount: amountTotal,
+        provider: 'STRIPE',
+        paymentMethod: 'stripe_checkout',
+        transactionReference: paymentIntentId || session.id,
+        paymentToken: invoice.paymentToken,
+      });
 
       return { received: true, processed: true };
     }

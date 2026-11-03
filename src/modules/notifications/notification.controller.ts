@@ -4,6 +4,7 @@ import { listNotificationsQuerySchema } from './notification.types.js';
 import { sendSuccess } from '../../common/http/response.js';
 import { BadRequestError, NotFoundError } from '../../common/errors/app-error.js';
 import { prisma } from '../../database/prisma.js';
+import { runReminderCheckNow } from './reminder.cron.js';
 import { z } from 'zod';
 
 export class NotificationController {
@@ -119,6 +120,24 @@ export class NotificationController {
         200,
         'Test email dispatched successfully',
       );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  public static async triggerReminders(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
+    try {
+      const organizationId = req.tenant?.organizationId;
+      if (!organizationId) {
+        throw new BadRequestError('Missing organization context');
+      }
+
+      const telemetry = await runReminderCheckNow(organizationId);
+      sendSuccess(res, telemetry, 200, 'Automated communication & dunning cycle completed');
     } catch (error) {
       next(error);
     }

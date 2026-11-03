@@ -8,11 +8,25 @@ export interface AnalyticsTrendSummary {
   appointmentsChange: number;
 }
 
+export interface ArAgingBucketDto {
+  amount: number;
+  count: number;
+  percentage: number;
+}
+
+export interface ArAgingDto {
+  total: number;
+  current: ArAgingBucketDto;
+  overdue1to30: ArAgingBucketDto;
+  overdue31Plus: ArAgingBucketDto;
+}
+
 export interface AnalyticsOverviewDto {
   grossRevenue: number;
   netCashInflow: number;
   atv: number;
   outstandingAr: number;
+  arAging: ArAgingDto;
   appointmentFulfillmentRate: number;
   utilizationRate: number;
   totalAppointments: number;

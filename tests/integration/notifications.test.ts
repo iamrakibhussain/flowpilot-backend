@@ -145,4 +145,18 @@ describe('Notifications Module Integration Suite', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data.deletedCount).toBe(2);
   });
+
+  it('triggers on-demand automated communication & dunning cycle', async () => {
+    const app = createTestApp();
+    const res = await request(app)
+      .post('/api/v1/notifications/trigger-reminders')
+      .set('Cookie', ['flowpilot_session=valid-test-token'])
+      .set('X-Organization-Id', targetOrgId);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveProperty('checkedAppointments');
+    expect(res.body.data).toHaveProperty('checkedInvoices');
+    expect(res.body.data).toHaveProperty('checkedQuotes');
+  });
 });

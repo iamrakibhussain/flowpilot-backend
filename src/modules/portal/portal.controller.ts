@@ -182,6 +182,36 @@ export class PortalController {
   }
 
   /**
+   * Generate secure access token to review a quote/proposal
+   */
+  public static async getQuoteToken(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
+    try {
+      if (!req.portalContext) {
+        throw new UnauthorizedError('Portal context missing');
+      }
+
+      const quoteId = req.params.id;
+      if (!quoteId) {
+        throw new BadRequestError('Quote ID is required');
+      }
+
+      const result = await PortalService.getQuoteAccessToken(
+        req.portalContext.organization.id,
+        req.portalContext.customer.id,
+        quoteId,
+      );
+
+      sendSuccess(res, result, 200);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * End portal session & clear cookie
    */
   public static async logout(req: Request, res: Response, next: NextFunction): Promise<void> {

@@ -42,3 +42,36 @@ export const updatePortalProfileSchema = z.object({
 });
 
 export type UpdatePortalProfileInput = z.infer<typeof updatePortalProfileSchema>;
+
+export interface PortalQuoteSummary {
+  id: string;
+  quoteNumber: string;
+  title: string;
+  status: string;
+  subtotal: number;
+  taxAmount: number;
+  discountAmount: number;
+  totalAmount: number;
+  issuedAt: string;
+  expiresAt: string | null;
+  acceptedAt: string | null;
+  declinedAt: string | null;
+  notes: string | null;
+  itemsCount: number;
+}
+
+export interface PortalProjectSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  color: string;
+  startDate: string | null;
+  targetDate: string | null;
+  completedAt: string | null;
+  budget: number | null;
+  currency: string;
+  tasksCount: number;
+  completedTasksCount: number;
+  progressPercentage: number;
+}

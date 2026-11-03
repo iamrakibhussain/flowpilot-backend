@@ -102,6 +102,12 @@ describe('Executive Business Intelligence & Analytics Suite', () => {
     expect(res.body.data.grossRevenue).toBe(400); // 250 + 150
     expect(res.body.data.atv).toBe(200); // 400 / 2 paid invoices
     expect(res.body.data.outstandingAr).toBe(500);
+    expect(res.body.data.arAging).toBeDefined();
+    expect(res.body.data.arAging.total).toBe(500);
+    expect(res.body.data.arAging.current.amount).toBe(500);
+    expect(res.body.data.arAging.current.count).toBe(1);
+    expect(res.body.data.arAging.overdue1to30.amount).toBe(0);
+    expect(res.body.data.arAging.overdue31Plus.amount).toBe(0);
     expect(res.body.data.totalAppointments).toBe(3);
     expect(res.body.data.completedAppointments).toBe(2);
     expect(res.body.data.appointmentFulfillmentRate).toBe(67); // 2/3 ~ 67%
@@ -261,5 +267,6 @@ describe('Executive Business Intelligence & Analytics Suite', () => {
       'attachment; filename="flowpilot-analytics-30d.csv"',
     );
     expect(res.text).toContain('--- EXECUTIVE FINANCIAL & OPERATIONS SUMMARY ---');
+    expect(res.text).toContain('--- ACCOUNTS RECEIVABLE (AR) AGING ANALYSIS ---');
   });
 });
