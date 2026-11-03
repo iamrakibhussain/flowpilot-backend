@@ -848,21 +848,31 @@ export class EmailService {
     portalUrl: string;
     organizationName: string;
     brandColor?: string | null;
+    hoursNotice?: number;
   }): Promise<boolean> {
     const safeCustomer = escapeHtml(options.customerName);
     const safeService = escapeHtml(options.serviceTitle);
     const safeOrg = escapeHtml(options.organizationName);
     const safeSpecialist = escapeHtml(options.specialistName || 'Specialist');
     const brandColor = options.brandColor || '#2563eb';
+    const isTwoHours = options.hoursNotice === 2;
     const formattedDate = options.scheduledAt.toLocaleString('en-US', {
       weekday: 'long',
       hour: '2-digit',
       minute: '2-digit',
     });
 
-    const subject = `Reminder: ${safeService} tomorrow with ${safeOrg}`;
+    const subject = isTwoHours
+      ? `Upcoming Session in 2 Hours: ${safeService} with ${safeOrg}`
+      : `Reminder: ${safeService} tomorrow with ${safeOrg}`;
 
-    const text = `Hello ${options.customerName},\n\nThis is a quick reminder that you have an upcoming appointment tomorrow:\n\nService: ${options.serviceTitle}\nTime: ${formattedDate}\nSpecialist: ${options.specialistName || 'Specialist'}\n\nTo view or manage your booking, access our client portal:\n${options.portalUrl}\n\n— The ${options.organizationName} Team`;
+    const text = isTwoHours
+      ? `Hello ${options.customerName},\n\nThis is a quick reminder that your appointment starts in 2 hours:\n\nService: ${options.serviceTitle}\nTime: ${formattedDate}\nSpecialist: ${options.specialistName || 'Specialist'}\n\nTo view or manage your booking, access our client portal:\n${options.portalUrl}\n\n— The ${options.organizationName} Team`
+      : `Hello ${options.customerName},\n\nThis is a quick reminder that you have an upcoming appointment tomorrow:\n\nService: ${options.serviceTitle}\nTime: ${formattedDate}\nSpecialist: ${options.specialistName || 'Specialist'}\n\nTo view or manage your booking, access our client portal:\n${options.portalUrl}\n\n— The ${options.organizationName} Team`;
+
+    const bannerTitle = isTwoHours
+      ? `Starting in 2 Hours: Today at ${formattedDate}`
+      : `Reminder: Tomorrow at ${formattedDate}`;
 
     const html = `
 <!DOCTYPE html>
@@ -879,7 +889,7 @@ export class EmailService {
           <tr>
             <td style="padding: 24px 32px; background: ${brandColor}; color: #ffffff;">
               <span style="font-size: 11px; text-transform: uppercase; font-weight: 600; letter-spacing: 1px; opacity: 0.9;">Upcoming Appointment</span>
-              <h2 style="margin: 4px 0 0 0; font-size: 20px; font-weight: 700;">Reminder: Tomorrow at ${formattedDate}</h2>
+              <h2 style="margin: 4px 0 0 0; font-size: 20px; font-weight: 700;">${bannerTitle}</h2>
             </td>
           </tr>
           <tr>
@@ -992,6 +1002,363 @@ export class EmailService {
 
               <p style="margin: 0; font-size: 12px; color: #94a3b8; line-height: 1.5;">
                 Thank you for your business. If you have any questions regarding this invoice, please reach out to ${safeOrg}.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 16px 32px; background-color: #f8fafc; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
+              &copy; 2026 ${safeOrg}. Powered by FlowPilot.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+    `;
+
+    const result = await this.sendMail({ to: options.to, subject, text, html });
+    return result.success;
+  }
+
+  /**
+   * Dispatches an official payment confirmation & money receipt email to the client upon settlement.
+   */
+  public static async sendPaymentReceiptEmail(options: {
+    to: string;
+    customerName: string;
+    invoiceNumber: string;
+    organizationName: string;
+    brandColor?: string | null;
+    amount: number;
+    currency: string;
+    paymentMethod: string;
+    transactionReference?: string | null;
+    receiptUrl?: string | null;
+  }): Promise<boolean> {
+    const safeName = escapeHtml(options.customerName);
+    const safeOrg = escapeHtml(options.organizationName);
+    const safeInvoiceNumber = escapeHtml(options.invoiceNumber);
+    const safeMethod = escapeHtml(options.paymentMethod.replace(/_/g, ' '));
+    const safeRef = escapeHtml(options.transactionReference || 'N/A');
+    const brandColor = options.brandColor || '#16a34a';
+    const formattedAmount = `${options.currency.toUpperCase()} $${Number(options.amount).toFixed(2)}`;
+    const settledDate = new Date().toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+
+    const subject = `Receipt for Invoice #${options.invoiceNumber} - ${options.organizationName}`;
+
+    const text = `Hello ${options.customerName},\n\nThank you! Your payment for Invoice #${options.invoiceNumber} has been received and confirmed.\n\nAmount Settled: ${formattedAmount}\nDate: ${settledDate}\nPayment Method: ${options.paymentMethod}\nReference: ${options.transactionReference || 'N/A'}\n\nView or download your official receipt:\n${options.receiptUrl || env.FRONTEND_URL}\n\nThank you for choosing ${options.organizationName}!\n\n— The FlowPilot Automated Payment System`;
+
+    const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
+  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f8fafc; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 520px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+          <!-- Header -->
+          <tr>
+            <td style="padding: 28px 32px 20px 32px; border-bottom: 1px solid #f1f5f9; background: linear-gradient(to right, #f0fdf4, #ffffff);">
+              <div style="display: inline-block; padding: 4px 10px; border-radius: 20px; background-color: #dcfce7; color: #166534; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+                &#10003; Payment Settled
+              </div>
+              <h1 style="margin: 0; font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px;">${safeOrg}</h1>
+            </td>
+          </tr>
+          <!-- Content -->
+          <tr>
+            <td style="padding: 32px;">
+              <p style="margin: 0 0 16px 0; font-size: 15px; font-weight: 600; color: #0f172a;">Hello ${safeName},</p>
+              <p style="margin: 0 0 24px 0; font-size: 14px; line-height: 1.6; color: #475569;">
+                Thank you! Your payment for <strong>Invoice #${safeInvoiceNumber}</strong> has been successfully processed and verified.
+              </p>
+
+              <!-- Receipt Box -->
+              <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 20px; margin-bottom: 24px;">
+                <table width="100%" border="0" cellspacing="0" cellpadding="6" style="font-size: 13px;">
+                  <tr>
+                    <td style="color: #64748b;">Amount Paid:</td>
+                    <td align="right" style="font-weight: 800; color: #16a34a; font-size: 16px;">${formattedAmount}</td>
+                  </tr>
+                  <tr>
+                    <td style="color: #64748b;">Settled Date:</td>
+                    <td align="right" style="font-weight: 600; color: #1e293b;">${settledDate}</td>
+                  </tr>
+                  <tr>
+                    <td style="color: #64748b;">Payment Method:</td>
+                    <td align="right" style="font-weight: 600; color: #1e293b; text-transform: capitalize;">${safeMethod}</td>
+                  </tr>
+                  <tr>
+                    <td style="color: #64748b;">Transaction Reference:</td>
+                    <td align="right" style="font-family: monospace; font-size: 12px; color: #64748b;">${safeRef}</td>
+                  </tr>
+                </table>
+              </div>
+
+              ${
+                options.receiptUrl
+                  ? `
+              <div style="text-align: center; margin: 28px 0;">
+                <a href="${options.receiptUrl}" style="background-color: ${brandColor}; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 14px; padding: 12px 32px; border-radius: 8px; display: inline-block;">
+                  View &amp; Print Official Statement
+                </a>
+              </div>
+              `
+                  : ''
+              }
+
+              <p style="margin: 0; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+                A permanent copy of this transaction has been logged in your client portal. If you need any assistance, please contact ${safeOrg}.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 16px 32px; background-color: #f8fafc; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
+              &copy; 2026 ${safeOrg}. Secured by FlowPilot Payments.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+    `;
+
+    const result = await this.sendMail({ to: options.to, subject, text, html });
+    return result.success;
+  }
+
+  /**
+   * Dispatches automated dunning notices for overdue invoices (3-Day Gentle & 7-Day Urgent).
+   */
+  public static async sendInvoiceDunningEmail(options: {
+    to: string;
+    customerName: string;
+    invoiceNumber: string;
+    organizationName: string;
+    brandColor?: string | null;
+    amount: number;
+    currency: string;
+    dueDate: Date;
+    daysOverdue: number;
+    dunningStage: '3_DAY' | '7_DAY';
+    payUrl?: string;
+    portalUrl?: string;
+  }): Promise<boolean> {
+    const safeCustomer = escapeHtml(options.customerName);
+    const safeOrg = escapeHtml(options.organizationName);
+    const safeInvoiceNumber = escapeHtml(options.invoiceNumber);
+    const brandColor = options.brandColor || '#2563eb';
+    const isUrgent = options.dunningStage === '7_DAY';
+    const formattedAmount = `${options.currency.toUpperCase()} $${Number(options.amount).toFixed(2)}`;
+    const formattedDue = options.dueDate.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+
+    const subject = isUrgent
+      ? `URGENT: Invoice #${options.invoiceNumber} is ${options.daysOverdue} days overdue - ${options.organizationName}`
+      : `Friendly Reminder: Invoice #${options.invoiceNumber} with ${options.organizationName} is past due`;
+
+    const text = isUrgent
+      ? `Hello ${options.customerName},\n\nThis is an urgent notice regarding Invoice #${options.invoiceNumber} which was due on ${formattedDue} and is now ${options.daysOverdue} days past due.\n\nOutstanding Balance: ${formattedAmount}\n\nPlease settle this invoice today using the link below:\n${options.payUrl || options.portalUrl || env.FRONTEND_URL}\n\nThank you for your prompt attention.\n\n— The ${options.organizationName} Accounts Team`
+      : `Hello ${options.customerName},\n\nWe wanted to send a gentle reminder that Invoice #${options.invoiceNumber} was due on ${formattedDue} (${options.daysOverdue} days ago).\n\nBalance Due: ${formattedAmount}\n\nYou can easily review and settle this invoice online here:\n${options.payUrl || options.portalUrl || env.FRONTEND_URL}\n\nThank you for your business!\n\n— The ${options.organizationName} Team`;
+
+    const headerBg = isUrgent ? '#dc2626' : brandColor;
+    const badgeText = isUrgent ? 'URGENT NOTICE' : 'PAYMENT REMINDER';
+
+    const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${subject}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
+  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 540px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+          <tr>
+            <td style="padding: 24px 32px; background-color: ${headerBg}; color: #ffffff;">
+              <span style="display: inline-block; padding: 3px 8px; border-radius: 4px; background-color: rgba(255,255,255,0.2); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
+                ${badgeText}
+              </span>
+              <h2 style="margin: 0; font-size: 20px; font-weight: 700;">Invoice #${safeInvoiceNumber}</h2>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 32px;">
+              <p style="margin: 0 0 16px 0; font-size: 14px; color: #334155;">Hello ${safeCustomer},</p>
+              <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.6; color: #475569;">
+                ${
+                  isUrgent
+                    ? `This is an urgent notice regarding your outstanding balance for <strong>Invoice #${safeInvoiceNumber}</strong>, which was due on <strong>${formattedDue}</strong> and is currently <strong>${options.daysOverdue} days overdue</strong>.`
+                    : `We hope this message finds you well. This is a gentle reminder that <strong>Invoice #${safeInvoiceNumber}</strong> was due on <strong>${formattedDue}</strong> and is currently pending settlement.`
+                }
+              </p>
+
+              <!-- Invoice Summary Box -->
+              <div style="background-color: ${isUrgent ? '#fef2f2' : '#f8fafc'}; border: 1px solid ${isUrgent ? '#fecaca' : '#e2e8f0'}; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                <table width="100%" border="0" cellspacing="0" cellpadding="4" style="font-size: 13px;">
+                  <tr>
+                    <td style="color: #64748b;">Invoice Number:</td>
+                    <td align="right" style="font-weight: 700; color: #1e293b;">#${safeInvoiceNumber}</td>
+                  </tr>
+                  <tr>
+                    <td style="color: #64748b;">Original Due Date:</td>
+                    <td align="right" style="font-weight: 600; color: #1e293b;">${formattedDue}</td>
+                  </tr>
+                  <tr>
+                    <td style="color: #64748b;">Days Past Due:</td>
+                    <td align="right" style="font-weight: 700; color: ${isUrgent ? '#dc2626' : '#d97706'};">${options.daysOverdue} days</td>
+                  </tr>
+                  <tr>
+                    <td style="color: #64748b; font-size: 14px; padding-top: 8px;">Total Outstanding:</td>
+                    <td align="right" style="font-weight: 800; color: ${isUrgent ? '#dc2626' : '#0f172a'}; font-size: 16px; padding-top: 8px;">${formattedAmount}</td>
+                  </tr>
+                </table>
+              </div>
+
+              ${
+                options.payUrl
+                  ? `
+              <div style="text-align: center; margin: 28px 0;">
+                <a href="${options.payUrl}" style="background-color: ${isUrgent ? '#dc2626' : '#16a34a'}; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 14px; padding: 14px 36px; border-radius: 8px; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                  Pay Now Online &rarr;
+                </a>
+              </div>
+              `
+                  : options.portalUrl
+                    ? `
+              <div style="text-align: center; margin: 28px 0;">
+                <a href="${options.portalUrl}" style="background-color: ${brandColor}; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 14px; padding: 12px 30px; border-radius: 8px; display: inline-block;">
+                  View in Client Portal &rarr;
+                </a>
+              </div>
+              `
+                    : ''
+              }
+
+              <p style="margin: 0; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+                If you have already processed this payment recently, please disregard this notice or contact ${safeOrg} if you have any questions.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 16px 32px; background-color: #f8fafc; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
+              &copy; 2026 ${safeOrg}. Powered by FlowPilot.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+    `;
+
+    const result = await this.sendMail({ to: options.to, subject, text, html });
+    return result.success;
+  }
+
+  /**
+   * Dispatches advance expiration warning for pending quotes & proposals (48 hours before expiry).
+   */
+  public static async sendQuoteExpiryWarningEmail(options: {
+    to: string;
+    customerName: string;
+    quoteNumber: string;
+    quoteTitle: string;
+    organizationName: string;
+    brandColor?: string | null;
+    totalAmount: number;
+    currency: string;
+    expiresAt: Date;
+    reviewUrl: string;
+  }): Promise<boolean> {
+    const safeCustomer = escapeHtml(options.customerName);
+    const safeOrg = escapeHtml(options.organizationName);
+    const safeQuoteNumber = escapeHtml(options.quoteNumber);
+    const safeTitle = escapeHtml(options.quoteTitle);
+    const brandColor = options.brandColor || '#2563eb';
+    const formattedAmount = `${options.currency.toUpperCase()} $${Number(options.totalAmount).toFixed(2)}`;
+    const formattedExpiry = options.expiresAt.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+
+    const subject = `Expiring Soon: Proposal #${options.quoteNumber} for ${options.organizationName}`;
+
+    const text = `Hello ${options.customerName},\n\nThis is a quick notice that your formal proposal for "${options.quoteTitle}" (Quote #${options.quoteNumber}) will expire in 48 hours on ${formattedExpiry}.\n\nEstimated Investment: ${formattedAmount}\n\nTo lock in your schedule and pricing, please review and digitally sign the agreement below:\n${options.reviewUrl}\n\nThank you for choosing ${options.organizationName}!\n\n— The ${options.organizationName} Team`;
+
+    const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${subject}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
+  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 540px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+          <tr>
+            <td style="padding: 24px 32px; background-color: #d97706; color: #ffffff;">
+              <span style="display: inline-block; padding: 3px 8px; border-radius: 4px; background-color: rgba(255,255,255,0.2); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
+                EXPIRES IN 48 HOURS
+              </span>
+              <h2 style="margin: 0; font-size: 20px; font-weight: 700;">Proposal #${safeQuoteNumber}</h2>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 32px;">
+              <p style="margin: 0 0 16px 0; font-size: 14px; color: #334155;">Hello ${safeCustomer},</p>
+              <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.6; color: #475569;">
+                Your proposal for <strong>"${safeTitle}"</strong> is set to expire on <strong>${formattedExpiry}</strong>.
+              </p>
+
+              <!-- Proposal Meta Box -->
+              <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                <table width="100%" border="0" cellspacing="0" cellpadding="4" style="font-size: 13px;">
+                  <tr>
+                    <td style="color: #64748b;">Proposal Title:</td>
+                    <td align="right" style="font-weight: 700; color: #1e293b;">${safeTitle}</td>
+                  </tr>
+                  <tr>
+                    <td style="color: #64748b;">Expiration Date:</td>
+                    <td align="right" style="font-weight: 700; color: #d97706;">${formattedExpiry} (48h left)</td>
+                  </tr>
+                  <tr>
+                    <td style="color: #64748b; font-size: 14px; padding-top: 8px;">Total Investment:</td>
+                    <td align="right" style="font-weight: 800; color: #0f172a; font-size: 16px; padding-top: 8px;">${formattedAmount}</td>
+                  </tr>
+                </table>
+              </div>
+
+              <div style="text-align: center; margin: 28px 0;">
+                <a href="${options.reviewUrl}" style="background-color: ${brandColor}; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 14px; padding: 14px 36px; border-radius: 8px; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                  Review &amp; Sign Proposal &rarr;
+                </a>
+              </div>
+
+              <p style="margin: 0; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+                Lock in your deliverable milestones and pricing before this proposal automatically expires. If you need any adjustments to the scope, please reach out to ${safeOrg}.
               </p>
             </td>
           </tr>

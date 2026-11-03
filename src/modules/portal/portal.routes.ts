@@ -17,6 +17,7 @@ protectedRouter.get('/dashboard', PortalController.getDashboard);
 protectedRouter.patch('/appointments/:id/reschedule', PortalController.reschedule);
 protectedRouter.patch('/appointments/:id/cancel', PortalController.cancel);
 protectedRouter.patch('/profile', PortalController.updateProfile);
+protectedRouter.post('/quotes/:id/token', PortalController.getQuoteToken);
 protectedRouter.post('/auth/logout', PortalController.logout);
 
 router.use('/', protectedRouter);

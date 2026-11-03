@@ -226,10 +226,12 @@ describe('Client Self-Service Portal Integration Suite', () => {
           total: new Decimal('100.00'),
           status: 'PAID',
           createdAt: new Date(),
+          paymentToken: 'tok_test_mock_token',
           items: [],
           transactions: [],
         },
       ] as any);
+      vi.spyOn(prisma.invoice, 'update').mockResolvedValue({} as any);
 
       const app = createPortalTestApp();
       const res = await request(app)
@@ -241,6 +243,43 @@ describe('Client Self-Service Portal Integration Suite', () => {
       expect(res.body.data.customer.name).toBe('Jane Doe');
       expect(res.body.data.appointments.upcoming).toHaveLength(1);
       expect(res.body.data.invoices.metrics.totalPaid).toBe('100.00');
+      expect(res.body.data.quotes.list).toBeDefined();
+      expect(res.body.data.projects.list).toBeDefined();
+    });
+  });
+
+  describe('POST /api/v1/portal/quotes/:id/token', () => {
+    it('generates secure access token for the authenticated customer', async () => {
+      vi.spyOn(prisma.customerPortalSession, 'findFirst').mockResolvedValue({
+        id: 'sess-1',
+        organizationId: orgId,
+        customerId,
+        customer: { id: customerId, name: 'Jane Doe' },
+        organization: { id: orgId, name: 'Apex Studio', slug: orgSlug },
+      } as any);
+
+      vi.spyOn(prisma.customerPortalSession, 'update').mockResolvedValue({} as any);
+
+      vi.spyOn((prisma as any).quote, 'findFirst').mockResolvedValue({
+        id: 'quote-1',
+        organizationId: orgId,
+        customerId,
+        expiresAt: new Date(Date.now() + 7 * 86400000),
+      });
+
+      vi.spyOn((prisma as any).quoteToken, 'create').mockResolvedValue({
+        id: 'token-1',
+        tokenHash: 'hash-abc',
+      });
+
+      const app = createPortalTestApp();
+      const res = await request(app)
+        .post('/api/v1/portal/quotes/quote-1/token')
+        .set('Cookie', `${PORTAL_COOKIE_NAME}=test-raw-token`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.url).toMatch(/^\/quote\/[a-f0-9]{64}$/);
     });
   });
 

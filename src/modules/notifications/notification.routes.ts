@@ -22,4 +22,11 @@ router.post(
   NotificationController.testEmail,
 );
 
+// Manual on-demand dunning & reminder trigger: restricted to OWNER and ADMIN
+router.post(
+  '/trigger-reminders',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  NotificationController.triggerReminders,
+);
+
 export const notificationRoutes = router;

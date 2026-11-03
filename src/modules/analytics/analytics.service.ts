@@ -2,6 +2,7 @@ import { prisma } from '../../database/prisma.js';
 import {
   TimeframeFilter,
   AnalyticsOverviewDto,
+  ArAgingDto,
   CashflowPointDto,
   ServiceProfitabilityDto,
   StaffProductivityDto,
@@ -84,7 +85,7 @@ export class AnalyticsService {
         organizationId,
         status: 'PENDING',
       },
-      select: { total: true },
+      select: { total: true, dueDate: true, issueDate: true },
     });
 
     // Current period deposits from appointments
@@ -126,6 +127,56 @@ export class AnalyticsService {
     const atv = paidCount > 0 ? Math.round((grossRevenue / paidCount) * 100) / 100 : 0;
 
     const outstandingAr = currentPendingInvoices.reduce((acc, inv) => acc + Number(inv.total), 0);
+
+    // Accounts Receivable (AR) Aging Breakdown
+    let currentAr = 0;
+    let currentArCount = 0;
+    let overdue1to30Ar = 0;
+    let overdue1to30ArCount = 0;
+    let overdue31PlusAr = 0;
+    let overdue31PlusArCount = 0;
+
+    const now = new Date();
+    const nowTime = now.getTime();
+    for (const inv of currentPendingInvoices) {
+      const amt = Number(inv.total);
+      const dueTime = inv.dueDate ? new Date(inv.dueDate).getTime() : nowTime;
+      if (dueTime >= nowTime) {
+        currentAr += amt;
+        currentArCount += 1;
+      } else {
+        const daysOverdue = Math.floor((nowTime - dueTime) / 86400000);
+        if (daysOverdue <= 30) {
+          overdue1to30Ar += amt;
+          overdue1to30ArCount += 1;
+        } else {
+          overdue31PlusAr += amt;
+          overdue31PlusArCount += 1;
+        }
+      }
+    }
+
+    const calcArPct = (amt: number) =>
+      outstandingAr > 0 ? Math.round((amt / outstandingAr) * 100) : 0;
+
+    const arAging: ArAgingDto = {
+      total: Math.round(outstandingAr * 100) / 100,
+      current: {
+        amount: Math.round(currentAr * 100) / 100,
+        count: currentArCount,
+        percentage: calcArPct(currentAr),
+      },
+      overdue1to30: {
+        amount: Math.round(overdue1to30Ar * 100) / 100,
+        count: overdue1to30ArCount,
+        percentage: calcArPct(overdue1to30Ar),
+      },
+      overdue31Plus: {
+        amount: Math.round(overdue31PlusAr * 100) / 100,
+        count: overdue31PlusArCount,
+        percentage: calcArPct(overdue31PlusAr),
+      },
+    };
 
     const totalAppointments = currentAppointments.length;
     const completedAppointments = currentAppointments.filter(
@@ -206,6 +257,7 @@ export class AnalyticsService {
       netCashInflow: Math.round(netCashInflow * 100) / 100,
       atv,
       outstandingAr: Math.round(outstandingAr * 100) / 100,
+      arAging,
       appointmentFulfillmentRate,
       utilizationRate,
       totalAppointments,
@@ -482,6 +534,20 @@ export class AnalyticsService {
     lines.push(`Outstanding Accounts Receivable,$${overview.outstandingAr.toFixed(2)}`);
     lines.push(`Appointment Fulfillment Rate,${overview.appointmentFulfillmentRate}%`);
     lines.push(`Workforce Utilization Rate,${overview.utilizationRate}%`);
+    lines.push('');
+
+    // Accounts Receivable (AR) Aging Breakdown Section
+    lines.push('--- ACCOUNTS RECEIVABLE (AR) AGING ANALYSIS ---');
+    lines.push('Aging Bucket,Amount,Invoices Count,Share %');
+    lines.push(
+      `Current (Not Due),$${overview.arAging.current.amount.toFixed(2)},${overview.arAging.current.count},${overview.arAging.current.percentage}%`,
+    );
+    lines.push(
+      `1-30 Days Overdue,$${overview.arAging.overdue1to30.amount.toFixed(2)},${overview.arAging.overdue1to30.count},${overview.arAging.overdue1to30.percentage}%`,
+    );
+    lines.push(
+      `31+ Days Overdue,$${overview.arAging.overdue31Plus.amount.toFixed(2)},${overview.arAging.overdue31Plus.count},${overview.arAging.overdue31Plus.percentage}%`,
+    );
     lines.push('');
 
     // Services Section

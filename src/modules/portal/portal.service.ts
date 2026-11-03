@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import { generateSessionToken, hashSessionToken } from '../auth/crypto.js';
 import { EmailService } from '../../common/email/email.service.js';
@@ -15,7 +16,52 @@ import type {
   RescheduleAppointmentInput,
   CancelAppointmentInput,
   UpdatePortalProfileInput,
+  PortalQuoteSummary,
+  PortalProjectSummary,
 } from './portal.types.js';
+
+interface RawQuoteItem {
+  id: string;
+  description: string;
+  quantity: number;
+  unitPrice: Prisma.Decimal | number;
+  amount: Prisma.Decimal | number;
+}
+
+interface RawQuoteForPortal {
+  id: string;
+  organizationId: string;
+  customerId: string;
+  quoteNumber: string;
+  title: string;
+  status: string;
+  subtotal: Prisma.Decimal | number;
+  taxAmount: Prisma.Decimal | number;
+  discountAmount: Prisma.Decimal | number;
+  totalAmount: Prisma.Decimal | number;
+  issuedAt: Date;
+  expiresAt: Date | null;
+  acceptedAt: Date | null;
+  declinedAt: Date | null;
+  notes: string | null;
+  items: RawQuoteItem[];
+}
+
+const prismaQuotes = prisma as unknown as {
+  quote: {
+    findMany: (args: unknown) => Promise<RawQuoteForPortal[]>;
+    findFirst: (args: unknown) => Promise<RawQuoteForPortal | null>;
+  };
+  quoteToken: {
+    create: (args: {
+      data: {
+        quoteId: string;
+        tokenHash: string;
+        expiresAt: Date;
+      };
+    }) => Promise<{ id: string; tokenHash: string }>;
+  };
+};
 
 export class PortalService {
   /**
@@ -257,7 +303,7 @@ export class PortalService {
    * Fetches the complete portal dashboard state for the authenticated customer.
    */
   public static async getPortalDashboardData(organizationId: string, customerId: string) {
-    const [organization, customer, appointments, invoices] = await Promise.all([
+    const [organization, customer, appointments, invoices, quotes, projects] = await Promise.all([
       prisma.organization.findUnique({
         where: { id: organizationId },
         select: {
@@ -338,6 +384,38 @@ export class PortalService {
           createdAt: 'desc',
         },
       }),
+      prismaQuotes.quote.findMany({
+        where: {
+          organizationId,
+          customerId,
+        },
+        include: {
+          items: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
+      prisma.project.findMany({
+        where: {
+          organizationId,
+          customerId,
+        },
+        include: {
+          tasks: {
+            select: {
+              id: true,
+              title: true,
+              status: true,
+              priority: true,
+              dueDate: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
     ]);
 
     if (!organization || !customer) {
@@ -366,7 +444,23 @@ export class PortalService {
     let totalPaid = 0;
     let totalOutstanding = 0;
 
-    for (const inv of invoices) {
+    // Ensure every invoice has a valid cryptographic payment token for instant 1-click portal settlement
+    const invoicesWithTokens = await Promise.all(
+      invoices.map(async (inv) => {
+        if (!inv.paymentToken) {
+          const generatedToken = `tok_${crypto.randomBytes(16).toString('hex')}`;
+          const expiry = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+          await prisma.invoice.update({
+            where: { id: inv.id },
+            data: { paymentToken: generatedToken, paymentTokenExpiry: expiry },
+          });
+          return { ...inv, paymentToken: generatedToken, paymentTokenExpiry: expiry };
+        }
+        return inv;
+      }),
+    );
+
+    for (const inv of invoicesWithTokens) {
       const invTotal = Number(inv.total);
       totalBilled += invTotal;
       if (inv.status === 'PAID') {
@@ -375,6 +469,64 @@ export class PortalService {
         totalOutstanding += invTotal;
       }
     }
+
+    let totalQuoteValue = 0;
+    let pendingQuotesCount = 0;
+    let acceptedQuotesCount = 0;
+
+    const formattedQuotes: PortalQuoteSummary[] = (quotes || []).map((q) => {
+      const totalNum = Number(q.totalAmount);
+      totalQuoteValue += totalNum;
+      if (q.status === 'SENT' || q.status === 'DRAFT') {
+        pendingQuotesCount++;
+      } else if (q.status === 'ACCEPTED') {
+        acceptedQuotesCount++;
+      }
+
+      return {
+        id: q.id,
+        quoteNumber: q.quoteNumber,
+        title: q.title,
+        status: q.status,
+        subtotal: Number(q.subtotal),
+        taxAmount: Number(q.taxAmount),
+        discountAmount: Number(q.discountAmount),
+        totalAmount: totalNum,
+        issuedAt: q.issuedAt.toISOString(),
+        expiresAt: q.expiresAt ? q.expiresAt.toISOString() : null,
+        acceptedAt: q.acceptedAt ? q.acceptedAt.toISOString() : null,
+        declinedAt: q.declinedAt ? q.declinedAt.toISOString() : null,
+        notes: q.notes,
+        itemsCount: q.items?.length || 0,
+      };
+    });
+
+    const formattedProjects: PortalProjectSummary[] = (projects || []).map((p) => {
+      const totalTasks = p.tasks.length;
+      const completedTasks = p.tasks.filter((t) => t.status === 'DONE').length;
+      const progressPercentage =
+        totalTasks > 0
+          ? Math.round((completedTasks / totalTasks) * 100)
+          : p.status === 'COMPLETED'
+            ? 100
+            : 0;
+
+      return {
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        status: p.status,
+        color: p.color || '#3b82f6',
+        startDate: p.startDate ? p.startDate.toISOString() : null,
+        targetDate: p.targetDate ? p.targetDate.toISOString() : null,
+        completedAt: p.completedAt ? p.completedAt.toISOString() : null,
+        budget: p.budget ? Number(p.budget) : null,
+        currency: p.currency,
+        tasksCount: totalTasks,
+        completedTasksCount: completedTasks,
+        progressPercentage,
+      };
+    });
 
     return {
       organization,
@@ -385,14 +537,71 @@ export class PortalService {
         total: appointments.length,
       },
       invoices: {
-        list: invoices,
+        list: invoicesWithTokens,
         metrics: {
           totalBilled: totalBilled.toFixed(2),
           totalPaid: totalPaid.toFixed(2),
           totalOutstanding: totalOutstanding.toFixed(2),
-          count: invoices.length,
+          count: invoicesWithTokens.length,
         },
       },
+      quotes: {
+        list: formattedQuotes,
+        metrics: {
+          totalProposals: formattedQuotes.length,
+          pendingCount: pendingQuotesCount,
+          acceptedCount: acceptedQuotesCount,
+          totalValue: totalQuoteValue.toFixed(2),
+        },
+      },
+      projects: {
+        list: formattedProjects,
+        metrics: {
+          totalProjects: formattedProjects.length,
+          activeCount: formattedProjects.filter(
+            (p) => p.status === 'ACTIVE' || p.status === 'PLANNING',
+          ).length,
+          completedCount: formattedProjects.filter((p) => p.status === 'COMPLETED').length,
+        },
+      },
+    };
+  }
+
+  /**
+   * Issues a cryptographic token for an authenticated customer to view/sign a specific proposal.
+   */
+  public static async getQuoteAccessToken(
+    organizationId: string,
+    customerId: string,
+    quoteId: string,
+  ): Promise<{ token: string; url: string }> {
+    const quote = await prismaQuotes.quote.findFirst({
+      where: {
+        id: quoteId,
+        organizationId,
+        customerId,
+      },
+    });
+
+    if (!quote) {
+      throw new NotFoundError('Proposal not found');
+    }
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const tokenExpiry = quote.expiresAt || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+
+    await prismaQuotes.quoteToken.create({
+      data: {
+        quoteId: quote.id,
+        tokenHash,
+        expiresAt: tokenExpiry,
+      },
+    });
+
+    return {
+      token: rawToken,
+      url: `/quote/${rawToken}`,
     };
   }
 
