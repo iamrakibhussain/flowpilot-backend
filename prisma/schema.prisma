@@ -91,11 +91,23 @@ enum NotificationType {
   QUOTE_SENT
   QUOTE_ACCEPTED
   QUOTE_DECLINED
+  CONTRACT_SENT
+  CONTRACT_SIGNED
   PROJECT_CREATED
   TASK_ASSIGNED
   TEAM_INVITE
   SECURITY_ALERT
   SYSTEM
+}
+
+enum ContractStatus {
+  DRAFT
+  PENDING_SIGNATURE
+  VIEWED
+  SIGNED
+  COUNTERSIGNED
+  DECLINED
+  VOIDED
 }
 
 enum ProjectStatus {
@@ -142,6 +154,7 @@ model User {
   createdQuotes          Quote[]                  @relation("CreatedQuotes")
   createdProjects        Project[]                @relation("CreatedProjects")
   assignedTasks          ProjectTask[]            @relation("AssignedTasks")
+  createdContracts       Contract[]               @relation("CreatedContracts")
 
   @@map("users")
 }
@@ -203,6 +216,7 @@ model Organization {
   blockedTimes        BlockedTime[]
   projects            Project[]
   projectTasks        ProjectTask[]
+  contracts           Contract[]
 
   @@map("organizations")
 }
@@ -290,6 +304,7 @@ model Customer {
   customerPortalSessions CustomerPortalSession[]
   quotes                 Quote[]
   projects               Project[]
+  contracts              Contract[]
 
   @@index([organizationId])
   @@index([organizationId, email])
@@ -677,6 +692,7 @@ model Quote {
   convertedInvoice   Invoice?     @relation("QuoteToInvoice", fields: [convertedInvoiceId], references: [id], onDelete: SetNull)
   items              QuoteItem[]
   publicTokens       QuoteToken[]
+  contracts          Contract[]
   projects           Project[]
 
   createdAt          DateTime     @default(now()) @map("created_at")
@@ -748,6 +764,7 @@ model Project {
   quote          Quote?        @relation(fields: [quoteId], references: [id], onDelete: SetNull)
   createdBy      User?         @relation("CreatedProjects", fields: [createdById], references: [id], onDelete: SetNull)
   tasks          ProjectTask[]
+  contracts      Contract[]
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -799,6 +816,65 @@ model TaskChecklistItem {
 
   @@index([taskId])
   @@map("task_checklist_items")
+}
+
+model Contract {
+  id                    String          @id @default(uuid())
+  organizationId        String          @map("organization_id")
+  customerId            String          @map("customer_id")
+  quoteId               String?         @map("quote_id")
+  projectId             String?         @map("project_id")
+  createdById           String?         @map("created_by_id")
+
+  title                 String
+  contractNumber        String          @map("contract_number")
+  content               String          @db.Text
+  status                ContractStatus  @default(DRAFT)
+
+  // Direct high-entropy cryptographic signing token for /sign/[token]
+  signToken             String?         @unique @map("sign_token")
+  signTokenExpiry       DateTime?       @map("sign_token_expiry")
+
+  // Client Signature & Audit Verification
+  signedAt              DateTime?       @map("signed_at")
+  signerName            String?         @map("signer_name")
+  signerEmail           String?         @map("signer_email")
+  signerIp              String?         @map("signer_ip")
+  signerUserAgent       String?         @map("signer_user_agent")
+  signatureData         String?         @map("signature_data") @db.Text
+  signatureType         String?         @map("signature_type")
+  contentChecksum       String?         @map("content_checksum")
+  clientNotes           String?         @map("client_notes") @db.Text
+
+  // Countersignature (Business Owner / Staff)
+  countersignedAt       DateTime?       @map("countersigned_at")
+  countersignerId       String?         @map("countersigner_id")
+  countersignerName     String?         @map("countersigner_name")
+  countersignatureData  String?         @map("countersignature_data") @db.Text
+
+  // Timestamps & Lifecycle
+  issuedAt              DateTime        @default(now()) @map("issued_at")
+  expiresAt             DateTime?       @map("expires_at")
+  viewedAt              DateTime?       @map("viewed_at")
+  declinedAt            DateTime?       @map("declined_at")
+  declineReason         String?         @map("decline_reason") @db.Text
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  organization          Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer              Customer        @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  quote                 Quote?          @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  project               Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdBy             User?           @relation("CreatedContracts", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, contractNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, customerId])
+  @@index([quoteId])
+  @@index([projectId])
+  @@index([signToken])
+  @@map("contracts")
 }
 
 
