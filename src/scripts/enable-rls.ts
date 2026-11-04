@@ -13,7 +13,9 @@ async function main() {
   // 2. Enable RLS on every table
   for (const { tablename } of tables) {
     try {
-      await prisma.$executeRawUnsafe(`ALTER TABLE public."${tablename}" ENABLE ROW LEVEL SECURITY;`);
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE public."${tablename}" ENABLE ROW LEVEL SECURITY;`,
+      );
       console.log(`[RLS ENABLED] public."${tablename}"`);
     } catch (err) {
       console.error(`[ERROR] Failed to enable RLS on "${tablename}":`, err);
@@ -31,10 +33,16 @@ async function main() {
     if (roleNames.length > 0) {
       for (const role of roleNames) {
         await prisma.$executeRawUnsafe(`REVOKE ALL ON ALL TABLES IN SCHEMA public FROM "${role}";`);
-        await prisma.$executeRawUnsafe(`REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM "${role}";`);
-        await prisma.$executeRawUnsafe(`REVOKE ALL ON ALL ROUTINES IN SCHEMA public FROM "${role}";`);
+        await prisma.$executeRawUnsafe(
+          `REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM "${role}";`,
+        );
+        await prisma.$executeRawUnsafe(
+          `REVOKE ALL ON ALL ROUTINES IN SCHEMA public FROM "${role}";`,
+        );
         await prisma.$executeRawUnsafe(`REVOKE USAGE ON SCHEMA public FROM "${role}";`);
-        console.log(`[REVOKED ALL ACCESS] Revoked public schema usage from PostgREST role: "${role}"`);
+        console.log(
+          `[REVOKED ALL ACCESS] Revoked public schema usage from PostgREST role: "${role}"`,
+        );
       }
     }
   } catch (err) {
@@ -49,7 +57,9 @@ async function main() {
   console.log('\n--- Final Verification ---');
   let allSecured = true;
   for (const { tablename, rowsecurity } of verification) {
-    console.log(`Table: ${tablename.padEnd(35)} RLS: ${rowsecurity ? 'ENABLED (SECURE)' : 'DISABLED (RISK)'}`);
+    console.log(
+      `Table: ${tablename.padEnd(35)} RLS: ${rowsecurity ? 'ENABLED (SECURE)' : 'DISABLED (RISK)'}`,
+    );
     if (!rowsecurity) allSecured = false;
   }
 
@@ -66,4 +76,3 @@ main().catch((err) => {
   console.error('Fatal error during RLS hardening:', err);
   process.exit(1);
 });
-

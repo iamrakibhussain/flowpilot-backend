@@ -47,7 +47,10 @@ export type UpdateContractInput = z.infer<typeof updateContractSchema>;
 export const signContractPublicSchema = z.object({
   signerName: z.string().min(2, { message: 'Signer full name is required' }).max(100),
   signerEmail: z.string().email({ message: 'Valid signer email address is required' }),
-  signatureData: z.string().min(10, { message: 'Signature representation is required' }).max(100000),
+  signatureData: z
+    .string()
+    .min(10, { message: 'Signature representation is required' })
+    .max(100000),
   signatureType: z.enum(['DRAWN', 'TYPED']).default('DRAWN'),
   clientNotes: z.string().max(1000).optional().nullable(),
   agreedToTerms: z.literal(true, {
@@ -102,4 +105,3 @@ export interface PublicContractStatement {
     company?: string | null;
   };
 }
-

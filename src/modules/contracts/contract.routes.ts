@@ -27,4 +27,3 @@ publicRouter.post('/:token/sign', ContractController.signPublic);
 publicRouter.post('/:token/decline', ContractController.declinePublic);
 
 export const publicContractRoutes = publicRouter;
-

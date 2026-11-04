@@ -376,7 +376,9 @@ export class AuthService {
       const now = Date.now();
       const lastActive = session.lastActiveAt ? new Date(session.lastActiveAt).getTime() : 0;
       if (now - lastActive > 5 * 60 * 1000) {
-        const rollingExpiresAt = new Date(Date.now() + env.SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+        const rollingExpiresAt = new Date(
+          Date.now() + env.SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
+        );
         prisma.session
           .update({
             where: { id: session.id },
