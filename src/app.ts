@@ -136,6 +136,8 @@ export function createApp(options: AppOptions = { enableRateLimiting: true }): E
     );
     app.use('/api/v1/invoices/:id/send-email', rateLimit(getEmailDispatchRateLimitOptions()));
     app.use('/api/v1/quotes/:id/send', rateLimit(getEmailDispatchRateLimitOptions()));
+    app.use('/api/v1/contracts/:id/send', rateLimit(getEmailDispatchRateLimitOptions()));
+    app.use('/api/v1/public/contracts', rateLimit(getPublicQuoteRateLimitOptions()));
     app.use('/api/v1/staff/blocked-time', rateLimit(getSchedulingActionRateLimitOptions()));
   }
 

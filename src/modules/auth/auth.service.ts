@@ -372,14 +372,20 @@ export class AuthService {
         return null;
       }
 
-      // Throttle session activity update (once every 5 minutes to minimize database load)
+      // Throttle session activity update and extend session expiry (rolling session ensures user stays logged in indefinitely)
       const now = Date.now();
       const lastActive = session.lastActiveAt ? new Date(session.lastActiveAt).getTime() : 0;
       if (now - lastActive > 5 * 60 * 1000) {
+        const rollingExpiresAt = new Date(
+          Date.now() + env.SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
+        );
         prisma.session
           .update({
             where: { id: session.id },
-            data: { lastActiveAt: new Date() },
+            data: {
+              lastActiveAt: new Date(),
+              expiresAt: rollingExpiresAt,
+            },
           })
           .catch(() => {});
       }
