@@ -17,6 +17,7 @@ import { analyticsRoutes } from '../modules/analytics/analytics.routes.js';
 import { organizationRoutes } from '../modules/organizations/organization.routes.js';
 import { portalRoutes } from '../modules/portal/portal.routes.js';
 import { notificationRoutes } from '../modules/notifications/notification.routes.js';
+import { recurringRoutes } from '../modules/recurring/recurring.routes.js';
 
 const router = Router();
 
@@ -40,5 +41,6 @@ router.use('/analytics', analyticsRoutes);
 router.use('/organizations', organizationRoutes);
 router.use('/portal', portalRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/recurring', recurringRoutes);
 
 export const v1Routes = router;
