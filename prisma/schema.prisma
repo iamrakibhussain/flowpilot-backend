@@ -133,6 +133,20 @@ enum TaskPriority {
   URGENT
 }
 
+enum RecurringFrequency {
+  WEEKLY
+  BI_WEEKLY
+  MONTHLY
+  QUARTERLY
+  ANNUALLY
+}
+
+enum RecurringStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
 
 model User {
   id              String     @id @default(uuid())
@@ -160,63 +174,65 @@ model User {
 }
 
 model Organization {
-  id        String             @id @default(uuid())
-  name      String
-  slug      String             @unique
+  id             String             @id @default(uuid())
+  name           String
+  slug           String             @unique
   status         OrganizationStatus @default(ACTIVE)
   bookingEnabled Boolean            @default(true) @map("booking_enabled")
   bookingTitle   String?            @map("booking_title")
   bookingNotice  String?            @map("booking_notice")
 
   // Brand & Public Portal
-  logoUrl        String?            @map("logo_url")
-  tagline        String?
-  brandColor     String?            @default("#2563eb") @map("brand_color")
-  customDomain   String?            @unique @map("custom_domain")
-  contactEmail   String?            @map("contact_email")
-  contactPhone   String?            @map("contact_phone")
-  address        String?
+  logoUrl      String? @map("logo_url")
+  tagline      String?
+  brandColor   String? @default("#2563eb") @map("brand_color")
+  customDomain String? @unique @map("custom_domain")
+  contactEmail String? @map("contact_email")
+  contactPhone String? @map("contact_phone")
+  address      String?
 
   // Financial Localization & Defaults
-  currency            String         @default("USD")
-  timezone            String         @default("UTC")
-  taxId               String?        @map("tax_id")
-  defaultTaxRate      Float          @default(0.0) @map("default_tax_rate")
-  defaultPaymentTerms String         @default("NET_15") @map("default_payment_terms")
-  invoiceFooter       String?        @map("invoice_footer")
+  currency            String  @default("USD")
+  timezone            String  @default("UTC")
+  taxId               String? @map("tax_id")
+  defaultTaxRate      Float   @default(0.0) @map("default_tax_rate")
+  defaultPaymentTerms String  @default("NET_15") @map("default_payment_terms")
+  invoiceFooter       String? @map("invoice_footer")
 
   // Bank Remittance Coordinates
-  bankName        String?            @map("bank_name")
-  bankAccount     String?            @map("bank_account")
-  bankRouting     String?            @map("bank_routing")
-  bankSwift       String?            @map("bank_swift")
+  bankName    String? @map("bank_name")
+  bankAccount String? @map("bank_account")
+  bankRouting String? @map("bank_routing")
+  bankSwift   String? @map("bank_swift")
 
   // Scheduling & Policy Controls
-  minNoticeHours      Int            @default(2) @map("min_notice_hours")
-  maxHorizonDays      Int            @default(30) @map("max_horizon_days")
-  cancellationHours   Int            @default(24) @map("cancellation_hours")
-  autoConfirmBookings Boolean        @default(true) @map("auto_confirm_bookings")
-  createdAt DateTime           @default(now()) @map("created_at")
-  updatedAt DateTime           @updatedAt @map("updated_at")
+  minNoticeHours      Int      @default(2) @map("min_notice_hours")
+  maxHorizonDays      Int      @default(30) @map("max_horizon_days")
+  cancellationHours   Int      @default(24) @map("cancellation_hours")
+  autoConfirmBookings Boolean  @default(true) @map("auto_confirm_bookings")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
-  memberships         Membership[]
-  customers           Customer[]
-  services            Service[]
-  staffMembers        StaffMember[]
-  appointments        Appointment[]
-  invoices            Invoice[]
-  paymentSettings     OrganizationPaymentSettings?
-  paymentTransactions PaymentTransaction[]
+  memberships            Membership[]
+  customers              Customer[]
+  services               Service[]
+  staffMembers           StaffMember[]
+  appointments           Appointment[]
+  invoices               Invoice[]
+  paymentSettings        OrganizationPaymentSettings?
+  paymentTransactions    PaymentTransaction[]
   customerPortalTokens   CustomerPortalToken[]
   customerPortalSessions CustomerPortalSession[]
   quotes                 Quote[]
-  invitations         OrganizationInvitation[]
-  auditLogs           WorkspaceAuditLog[]
-  notifications       Notification[]
-  blockedTimes        BlockedTime[]
-  projects            Project[]
-  projectTasks        ProjectTask[]
-  contracts           Contract[]
+  invitations            OrganizationInvitation[]
+  auditLogs              WorkspaceAuditLog[]
+  notifications          Notification[]
+  blockedTimes           BlockedTime[]
+  projects               Project[]
+  projectTasks           ProjectTask[]
+  contracts              Contract[]
+  recurringSchedules     RecurringSchedule[]
+  retainerHourLogs       RetainerHourLog[]
 
   @@map("organizations")
 }
@@ -296,15 +312,16 @@ model Customer {
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
 
-  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  appointments        Appointment[]
-  invoices            Invoice[]
-  paymentTransactions PaymentTransaction[]
+  organization           Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  appointments           Appointment[]
+  invoices               Invoice[]
+  paymentTransactions    PaymentTransaction[]
   customerPortalTokens   CustomerPortalToken[]
   customerPortalSessions CustomerPortalSession[]
   quotes                 Quote[]
   projects               Project[]
   contracts              Contract[]
+  recurringSchedules     RecurringSchedule[]
 
   @@index([organizationId])
   @@index([organizationId, email])
@@ -439,17 +456,20 @@ model Invoice {
   createdAt            DateTime      @default(now()) @map("created_at")
   updatedAt            DateTime      @updatedAt @map("updated_at")
 
-  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  customer     Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  items        InvoiceItem[]
-  transactions PaymentTransaction[]
-  convertedFromQuote Quote?         @relation("QuoteToInvoice")
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer            Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  items               InvoiceItem[]
+  transactions        PaymentTransaction[]
+  convertedFromQuote  Quote?               @relation("QuoteToInvoice")
+  recurringScheduleId String?              @map("recurring_schedule_id")
+  recurringSchedule   RecurringSchedule?   @relation(fields: [recurringScheduleId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([customerId])
   @@index([paymentToken])
+  @@index([recurringScheduleId])
   @@map("invoices")
 }
 
@@ -539,17 +559,17 @@ model OrganizationInvitation {
 }
 
 model WorkspaceAuditLog {
-  id             String       @id @default(uuid())
-  organizationId String       @map("organization_id")
-  userId         String       @map("user_id")
-  userName       String       @map("user_name")
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  userId         String   @map("user_id")
+  userName       String   @map("user_name")
   action         String
-  category       String       @default("SETTINGS")
+  category       String   @default("SETTINGS")
   details        String
-  ipAddress      String?      @map("ip_address")
-  createdAt      DateTime     @default(now()) @map("created_at")
+  ipAddress      String?  @map("ip_address")
+  createdAt      DateTime @default(now()) @map("created_at")
 
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, createdAt])
   @@map("workspace_audit_logs")
@@ -608,8 +628,8 @@ model Notification {
   metadata       Json?
   createdAt      DateTime         @default(now()) @map("created_at")
 
-  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, userId, isRead])
   @@index([organizationId, createdAt])
@@ -617,20 +637,20 @@ model Notification {
 }
 
 model BlockedTime {
-  id              String          @id @default(uuid())
-  organizationId  String          @map("organization_id")
-  staffMemberId   String?         @map("staff_member_id")
-  title           String
-  type            BlockedTimeType @default(BREAK)
-  startTime       DateTime        @map("start_time")
-  endTime         DateTime        @map("end_time")
-  allDay          Boolean         @default(false) @map("all_day")
-  notes           String?
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
+  id             String          @id @default(uuid())
+  organizationId String          @map("organization_id")
+  staffMemberId  String?         @map("staff_member_id")
+  title          String
+  type           BlockedTimeType @default(BREAK)
+  startTime      DateTime        @map("start_time")
+  endTime        DateTime        @map("end_time")
+  allDay         Boolean         @default(false) @map("all_day")
+  notes          String?
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
 
-  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  staffMember     StaffMember?    @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  staffMember  StaffMember? @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, startTime, endTime])
   @@index([organizationId, staffMemberId, startTime])
@@ -647,56 +667,56 @@ enum QuoteStatus {
 }
 
 model Quote {
-  id                 String       @id @default(uuid())
-  organizationId     String       @map("organization_id")
-  customerId         String       @map("customer_id")
-  createdById        String?      @map("created_by_id")
-  quoteNumber        String       @map("quote_number")
-  title              String       @default("Service Proposal & Estimate")
-  status             QuoteStatus  @default(DRAFT)
+  id             String      @id @default(uuid())
+  organizationId String      @map("organization_id")
+  customerId     String      @map("customer_id")
+  createdById    String?     @map("created_by_id")
+  quoteNumber    String      @map("quote_number")
+  title          String      @default("Service Proposal & Estimate")
+  status         QuoteStatus @default(DRAFT)
 
   // Financial breakdown
-  subtotal           Decimal      @db.Decimal(12, 2)
-  taxRate            Decimal      @default(0.00) @map("tax_rate") @db.Decimal(5, 2)
-  taxAmount          Decimal      @default(0.00) @map("tax_amount") @db.Decimal(12, 2)
-  discountType       String       @default("FIXED") @map("discount_type")
-  discountAmount     Decimal      @default(0.00) @map("discount_amount") @db.Decimal(12, 2)
-  totalAmount        Decimal      @map("total_amount") @db.Decimal(12, 2)
+  subtotal       Decimal @db.Decimal(12, 2)
+  taxRate        Decimal @default(0.00) @map("tax_rate") @db.Decimal(5, 2)
+  taxAmount      Decimal @default(0.00) @map("tax_amount") @db.Decimal(12, 2)
+  discountType   String  @default("FIXED") @map("discount_type")
+  discountAmount Decimal @default(0.00) @map("discount_amount") @db.Decimal(12, 2)
+  totalAmount    Decimal @map("total_amount") @db.Decimal(12, 2)
 
   // Dates & lifecycle
-  issuedAt           DateTime     @default(now()) @map("issued_at")
-  expiresAt          DateTime?    @map("expires_at")
-  viewedAt           DateTime?    @map("viewed_at")
-  acceptedAt         DateTime?    @map("accepted_at")
-  declinedAt         DateTime?    @map("declined_at")
+  issuedAt   DateTime  @default(now()) @map("issued_at")
+  expiresAt  DateTime? @map("expires_at")
+  viewedAt   DateTime? @map("viewed_at")
+  acceptedAt DateTime? @map("accepted_at")
+  declinedAt DateTime? @map("declined_at")
 
   // Digital Acceptance Audit
-  signerName         String?      @map("signer_name")
-  signerEmail        String?      @map("signer_email")
-  signerIp           String?      @map("signer_ip")
-  signatureData      String?      @map("signature_data") @db.Text
-  clientNotes        String?      @map("client_notes") @db.Text
+  signerName    String? @map("signer_name")
+  signerEmail   String? @map("signer_email")
+  signerIp      String? @map("signer_ip")
+  signatureData String? @map("signature_data") @db.Text
+  clientNotes   String? @map("client_notes") @db.Text
 
   // Content & Terms
-  introduction       String?      @db.Text
-  terms              String?      @db.Text
-  notes              String?      @db.Text
+  introduction String? @db.Text
+  terms        String? @db.Text
+  notes        String? @db.Text
 
   // Relational link to converted invoice
-  convertedInvoiceId String?      @unique @map("converted_invoice_id")
+  convertedInvoiceId String? @unique @map("converted_invoice_id")
 
   // Relations
-  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  customer           Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  createdBy          User?        @relation("CreatedQuotes", fields: [createdById], references: [id], onDelete: SetNull)
-  convertedInvoice   Invoice?     @relation("QuoteToInvoice", fields: [convertedInvoiceId], references: [id], onDelete: SetNull)
-  items              QuoteItem[]
-  publicTokens       QuoteToken[]
-  contracts          Contract[]
-  projects           Project[]
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer         Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdBy        User?        @relation("CreatedQuotes", fields: [createdById], references: [id], onDelete: SetNull)
+  convertedInvoice Invoice?     @relation("QuoteToInvoice", fields: [convertedInvoiceId], references: [id], onDelete: SetNull)
+  items            QuoteItem[]
+  publicTokens     QuoteToken[]
+  contracts        Contract[]
+  projects         Project[]
 
-  createdAt          DateTime     @default(now()) @map("created_at")
-  updatedAt          DateTime     @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@unique([organizationId, quoteNumber])
   @@index([organizationId, status])
@@ -716,55 +736,55 @@ model QuoteItem {
   sortOrder   Int      @default(0) @map("sort_order")
   createdAt   DateTime @default(now()) @map("created_at")
 
-  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  service     Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  quote   Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  service Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
 
   @@index([quoteId, sortOrder])
   @@map("quote_items")
 }
 
 model QuoteToken {
-  id         String    @id @default(uuid())
-  quoteId    String    @map("quote_id")
-  tokenHash  String    @unique @map("token_hash")
-  expiresAt  DateTime  @map("expires_at")
-  revokedAt  DateTime? @map("revoked_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
+  id        String    @id @default(uuid())
+  quoteId   String    @map("quote_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
 
-  quote      Quote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
 
   @@index([tokenHash])
   @@map("quote_tokens")
 }
 
 model Project {
-  id             String        @id @default(uuid())
-  organizationId String        @map("organization_id")
-  customerId     String?       @map("customer_id")
-  quoteId        String?       @map("quote_id")
-  createdById    String?       @map("created_by_id")
+  id             String  @id @default(uuid())
+  organizationId String  @map("organization_id")
+  customerId     String? @map("customer_id")
+  quoteId        String? @map("quote_id")
+  createdById    String? @map("created_by_id")
 
-  name           String
-  description    String?       @db.Text
-  status         ProjectStatus @default(PLANNING)
-  color          String?       @default("#3b82f6")
+  name        String
+  description String?       @db.Text
+  status      ProjectStatus @default(PLANNING)
+  color       String?       @default("#3b82f6")
 
-  startDate      DateTime?     @map("start_date")
-  targetDate     DateTime?     @map("target_date")
-  completedAt    DateTime?     @map("completed_at")
-  budget         Decimal?      @db.Decimal(12, 2)
-  currency       String        @default("USD")
+  startDate   DateTime? @map("start_date")
+  targetDate  DateTime? @map("target_date")
+  completedAt DateTime? @map("completed_at")
+  budget      Decimal?  @db.Decimal(12, 2)
+  currency    String    @default("USD")
 
-  createdAt      DateTime      @default(now()) @map("created_at")
-  updatedAt      DateTime      @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  customer       Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  quote          Quote?        @relation(fields: [quoteId], references: [id], onDelete: SetNull)
-  createdBy      User?         @relation("CreatedProjects", fields: [createdById], references: [id], onDelete: SetNull)
-  tasks          ProjectTask[]
-  contracts      Contract[]
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  quote        Quote?        @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  createdBy    User?         @relation("CreatedProjects", fields: [createdById], references: [id], onDelete: SetNull)
+  tasks        ProjectTask[]
+  contracts    Contract[]
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -774,26 +794,26 @@ model Project {
 }
 
 model ProjectTask {
-  id             String        @id @default(uuid())
-  organizationId String        @map("organization_id")
-  projectId      String        @map("project_id")
-  assigneeId     String?       @map("assignee_id")
+  id             String  @id @default(uuid())
+  organizationId String  @map("organization_id")
+  projectId      String  @map("project_id")
+  assigneeId     String? @map("assignee_id")
 
-  title          String
-  description    String?       @db.Text
-  status         TaskStatus    @default(TODO)
-  priority       TaskPriority  @default(MEDIUM)
-  dueDate        DateTime?     @map("due_date")
-  sortOrder      Int           @default(0) @map("sort_order")
+  title       String
+  description String?      @db.Text
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  dueDate     DateTime?    @map("due_date")
+  sortOrder   Int          @default(0) @map("sort_order")
 
-  createdAt      DateTime      @default(now()) @map("created_at")
-  updatedAt      DateTime      @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  project        Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  assignee       User?         @relation("AssignedTasks", fields: [assigneeId], references: [id], onDelete: SetNull)
-  checklists     TaskChecklistItem[]
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee     User?               @relation("AssignedTasks", fields: [assigneeId], references: [id], onDelete: SetNull)
+  checklists   TaskChecklistItem[]
 
   @@index([organizationId])
   @@index([projectId, status])
@@ -802,71 +822,71 @@ model ProjectTask {
 }
 
 model TaskChecklistItem {
-  id          String      @id @default(uuid())
-  taskId      String      @map("task_id")
+  id          String  @id @default(uuid())
+  taskId      String  @map("task_id")
   title       String
-  isCompleted Boolean     @default(false) @map("is_completed")
-  sortOrder   Int         @default(0) @map("sort_order")
+  isCompleted Boolean @default(false) @map("is_completed")
+  sortOrder   Int     @default(0) @map("sort_order")
 
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  task        ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([taskId])
   @@map("task_checklist_items")
 }
 
 model Contract {
-  id                    String          @id @default(uuid())
-  organizationId        String          @map("organization_id")
-  customerId            String          @map("customer_id")
-  quoteId               String?         @map("quote_id")
-  projectId             String?         @map("project_id")
-  createdById           String?         @map("created_by_id")
+  id             String  @id @default(uuid())
+  organizationId String  @map("organization_id")
+  customerId     String  @map("customer_id")
+  quoteId        String? @map("quote_id")
+  projectId      String? @map("project_id")
+  createdById    String? @map("created_by_id")
 
-  title                 String
-  contractNumber        String          @map("contract_number")
-  content               String          @db.Text
-  status                ContractStatus  @default(DRAFT)
+  title          String
+  contractNumber String         @map("contract_number")
+  content        String         @db.Text
+  status         ContractStatus @default(DRAFT)
 
   // Direct high-entropy cryptographic signing token for /sign/[token]
-  signToken             String?         @unique @map("sign_token")
-  signTokenExpiry       DateTime?       @map("sign_token_expiry")
+  signToken       String?   @unique @map("sign_token")
+  signTokenExpiry DateTime? @map("sign_token_expiry")
 
   // Client Signature & Audit Verification
-  signedAt              DateTime?       @map("signed_at")
-  signerName            String?         @map("signer_name")
-  signerEmail           String?         @map("signer_email")
-  signerIp              String?         @map("signer_ip")
-  signerUserAgent       String?         @map("signer_user_agent")
-  signatureData         String?         @map("signature_data") @db.Text
-  signatureType         String?         @map("signature_type")
-  contentChecksum       String?         @map("content_checksum")
-  clientNotes           String?         @map("client_notes") @db.Text
+  signedAt        DateTime? @map("signed_at")
+  signerName      String?   @map("signer_name")
+  signerEmail     String?   @map("signer_email")
+  signerIp        String?   @map("signer_ip")
+  signerUserAgent String?   @map("signer_user_agent")
+  signatureData   String?   @map("signature_data") @db.Text
+  signatureType   String?   @map("signature_type")
+  contentChecksum String?   @map("content_checksum")
+  clientNotes     String?   @map("client_notes") @db.Text
 
   // Countersignature (Business Owner / Staff)
-  countersignedAt       DateTime?       @map("countersigned_at")
-  countersignerId       String?         @map("countersigner_id")
-  countersignerName     String?         @map("countersigner_name")
-  countersignatureData  String?         @map("countersignature_data") @db.Text
+  countersignedAt      DateTime? @map("countersigned_at")
+  countersignerId      String?   @map("countersigner_id")
+  countersignerName    String?   @map("countersigner_name")
+  countersignatureData String?   @map("countersignature_data") @db.Text
 
   // Timestamps & Lifecycle
-  issuedAt              DateTime        @default(now()) @map("issued_at")
-  expiresAt             DateTime?       @map("expires_at")
-  viewedAt              DateTime?       @map("viewed_at")
-  declinedAt            DateTime?       @map("declined_at")
-  declineReason         String?         @map("decline_reason") @db.Text
-  createdAt             DateTime        @default(now()) @map("created_at")
-  updatedAt             DateTime        @updatedAt @map("updated_at")
+  issuedAt      DateTime  @default(now()) @map("issued_at")
+  expiresAt     DateTime? @map("expires_at")
+  viewedAt      DateTime? @map("viewed_at")
+  declinedAt    DateTime? @map("declined_at")
+  declineReason String?   @map("decline_reason") @db.Text
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   // Relations
-  organization          Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  customer              Customer        @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  quote                 Quote?          @relation(fields: [quoteId], references: [id], onDelete: SetNull)
-  project               Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  createdBy             User?           @relation("CreatedContracts", fields: [createdById], references: [id], onDelete: SetNull)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  quote        Quote?       @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdBy    User?        @relation("CreatedContracts", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, contractNumber])
   @@index([organizationId, status])
@@ -877,4 +897,75 @@ model Contract {
   @@map("contracts")
 }
 
+model RecurringSchedule {
+  id             String @id @default(uuid())
+  organizationId String @map("organization_id")
+  customerId     String @map("customer_id")
 
+  title     String
+  frequency RecurringFrequency @default(MONTHLY)
+  status    RecurringStatus    @default(ACTIVE)
+
+  // Financial Specification
+  currency  String  @default("USD")
+  subtotal  Decimal @db.Decimal(12, 2)
+  taxRate   Decimal @default(0) @map("tax_rate") @db.Decimal(5, 2)
+  taxAmount Decimal @default(0) @map("tax_amount") @db.Decimal(12, 2)
+  total     Decimal @db.Decimal(12, 2)
+  itemsJson Json    @map("items_json")
+
+  // Retainer Hour Tracking (Optional)
+  isRetainer        Boolean  @default(false) @map("is_retainer")
+  retainerHours     Decimal? @map("retainer_hours") @db.Decimal(6, 2)
+  overageHourlyRate Decimal? @map("overage_hourly_rate") @db.Decimal(10, 2)
+
+  // Execution Schedule & Timings
+  startDate        DateTime  @map("start_date")
+  endDate          DateTime? @map("end_date")
+  nextRunDate      DateTime  @map("next_run_date")
+  lastRunDate      DateTime? @map("last_run_date")
+  totalOccurrences Int       @default(0) @map("total_occurrences")
+  maxOccurrences   Int?      @map("max_occurrences")
+
+  // Automation Controls
+  autoSendEmail  Boolean @default(true) @map("auto_send_email")
+  paymentDueDays Int     @default(14) @map("payment_due_days")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer          Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  generatedInvoices Invoice[]
+  retainerLogs      RetainerHourLog[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, customerId])
+  @@index([nextRunDate, status])
+  @@map("recurring_schedules")
+}
+
+model RetainerHourLog {
+  id             String @id @default(uuid())
+  organizationId String @map("organization_id")
+  scheduleId     String @map("schedule_id")
+
+  cycleStartDate DateTime @map("cycle_start_date")
+  cycleEndDate   DateTime @map("cycle_end_date")
+  hoursAllocated Decimal  @map("hours_allocated") @db.Decimal(6, 2)
+  hoursLogged    Decimal  @default(0) @map("hours_logged") @db.Decimal(6, 2)
+  overageHours   Decimal  @default(0) @map("overage_hours") @db.Decimal(6, 2)
+  notes          String?  @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  schedule     RecurringSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleId, cycleStartDate])
+  @@index([organizationId, scheduleId])
+  @@map("retainer_hour_logs")
+}

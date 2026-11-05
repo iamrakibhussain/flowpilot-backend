@@ -4,10 +4,11 @@ import { logger } from './common/logging/logger.js';
 import { disconnectDatabase } from './database/prisma.js';
 import { AuthService } from './modules/auth/auth.service.js';
 import { initReminderCron } from './modules/notifications/reminder.cron.js';
+import { initRecurringBillingCron } from './modules/recurring/recurring.cron.js';
 
 const app = createApp();
 
-// FlowPilot Server Entry Point â€” Production Deliverability & Client Portal Enabled
+// FlowPilot Server Entry Point — Production Deliverability & Client Portal Enabled
 const server = app.listen(env.PORT, env.HOST, () => {
   logger.info(
     {
@@ -49,6 +50,12 @@ if (reminderInterval) {
   reminderInterval.unref();
 }
 
+// Periodic 15-minute recurring billing processor cron
+const recurringInterval = initRecurringBillingCron();
+if (recurringInterval) {
+  recurringInterval.unref();
+}
+
 // Graceful shutdown handling
 let isShuttingDown = false;
 
@@ -56,6 +63,7 @@ async function handleShutdown(signal: string): Promise<void> {
   if (isShuttingDown) return;
   isShuttingDown = true;
   clearInterval(tokenCleanupInterval);
+  if (recurringInterval) clearInterval(recurringInterval);
 
   logger.info({ signal }, 'Received termination signal. Starting graceful shutdown...');
 
