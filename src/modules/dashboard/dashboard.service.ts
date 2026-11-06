@@ -1,6 +1,9 @@
 import { InvoiceStatus, AppointmentType } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import { BadRequestError } from '../../common/errors/app-error.js';
+import { logger } from '../../common/logging/logger.js';
+import { AppointmentService } from '../appointments/appointment.service.js';
+import { InvoiceService } from '../invoices/invoice.service.js';
 import {
   DashboardMetricsResponse,
   DashboardActivityItem,
@@ -568,8 +571,6 @@ export class DashboardService {
       }
     }
 
-    const count = await prisma.invoice.count({ where: { organizationId } });
-    const invoiceNumber = `INV-${new Date().getFullYear()}-${890 + count}`;
     const dueDate = input.dueDate
       ? new Date(input.dueDate)
       : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
@@ -605,22 +606,56 @@ export class DashboardService {
       invoiceStatus = InvoiceStatus.CANCELLED;
     }
 
-    return prisma.invoice.create({
-      data: {
-        organizationId,
-        customerId,
-        invoiceNumber,
-        subtotal: input.amount,
-        tax: 0,
-        total: input.amount,
-        status: invoiceStatus,
-        dueDate,
-        items: {
-          create: itemsToCreate,
-        },
-      },
-      include: { customer: true, items: true },
-    });
+    const MAX_RETRIES = 3;
+    let lastError: unknown = null;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const invoiceNumber = await InvoiceService.generateInvoiceNumber(organizationId);
+
+        return await prisma.$transaction(
+          async (tx) => {
+            return tx.invoice.create({
+              data: {
+                organizationId,
+                customerId,
+                invoiceNumber,
+                subtotal: input.amount,
+                tax: 0,
+                total: input.amount,
+                status: invoiceStatus,
+                dueDate,
+                items: {
+                  create: itemsToCreate,
+                },
+              },
+              include: { customer: true, items: true },
+            });
+          },
+          { timeout: 15000, maxWait: 10000 },
+        );
+      } catch (err: unknown) {
+        lastError = err;
+        const isUniqueConstraint =
+          err !== null &&
+          typeof err === 'object' &&
+          'code' in err &&
+          (err as { code: string }).code === 'P2002';
+        if (isUniqueConstraint && attempt < MAX_RETRIES) {
+          logger.warn(
+            { attempt, organizationId },
+            'Dashboard invoice number collision detected, retrying with next sequence...',
+          );
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    if (lastError instanceof Error) {
+      throw lastError;
+    }
+    throw new Error('Failed to generate dashboard invoice after maximum retries');
   }
 
   /**
@@ -699,6 +734,7 @@ export class DashboardService {
         : new Date();
 
     const title = input.title ?? input.serviceTitle ?? 'Client Operations Engagement';
+    const duration = input.durationMinutes ?? 60;
 
     let aptType: AppointmentType = AppointmentType.VIDEO;
     if (input.locationType?.toLowerCase().includes('office') || input.type === 'IN_PERSON') {
@@ -707,22 +743,54 @@ export class DashboardService {
       aptType = AppointmentType.PHONE;
     }
 
-    return prisma.appointment.create({
-      data: {
-        organizationId,
-        customerId,
-        serviceId,
-        staffMemberId,
-        title,
-        scheduledAt: scheduledDate,
-        durationMinutes: input.durationMinutes ?? 60,
-        type: aptType,
-        location: input.location ?? input.locationType ?? 'Virtual Bridge',
-        notes: input.notes,
-        status: 'CONFIRMED',
+    return prisma.$transaction(
+      async (tx) => {
+        if (staffMemberId) {
+          try {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('flowpilot_apt_' || ${organizationId}::text), hashtext(${staffMemberId}::text))`;
+          } catch (lockErr) {
+            logger.debug(
+              { lockErr, organizationId, staffMemberId },
+              'Dashboard staff slot advisory lock fallback',
+            );
+          }
+
+          const conflict = await AppointmentService.checkConflict(
+            organizationId,
+            {
+              staffMemberId,
+              scheduledAt: scheduledDate,
+              durationMinutes: duration,
+            },
+            tx,
+          );
+
+          if (conflict.hasConflict && conflict.conflictingAppointment) {
+            throw new BadRequestError(
+              `Schedule Conflict: ${conflict.conflictingAppointment.staffMemberName ?? 'Staff member'} is already booked for "${conflict.conflictingAppointment.title}" at this time.`,
+            );
+          }
+        }
+
+        return tx.appointment.create({
+          data: {
+            organizationId,
+            customerId,
+            serviceId,
+            staffMemberId,
+            title,
+            scheduledAt: scheduledDate,
+            durationMinutes: duration,
+            type: aptType,
+            location: input.location ?? input.locationType ?? 'Virtual Bridge',
+            notes: input.notes,
+            status: 'CONFIRMED',
+          },
+          include: { customer: true, service: true, staffMember: true },
+        });
       },
-      include: { customer: true, service: true, staffMember: true },
-    });
+      { timeout: 15000, maxWait: 10000 },
+    );
   }
 
   /**

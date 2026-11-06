@@ -712,38 +712,53 @@ export class PortalService {
       appointment.durationMinutes || appointment.service?.durationMinutes || 60;
     const newEnd = new Date(newStart.getTime() + durationMinutes * 60 * 1000);
 
-    // Conflict check if a staff member is assigned
-    if (appointment.staffMemberId) {
-      const conflict = await prisma.appointment.findFirst({
-        where: {
-          organizationId,
-          staffMemberId: appointment.staffMemberId,
-          id: { not: appointment.id },
-          status: { in: ['CONFIRMED', 'PENDING'] },
-          scheduledAt: {
-            gte: new Date(newStart.getTime() - durationMinutes * 60 * 1000),
-            lte: newEnd,
+    const updated = await prisma.$transaction(async (tx) => {
+      // Conflict check if a staff member is assigned
+      if (appointment.staffMemberId) {
+        await tx.$executeRaw`
+          SELECT pg_advisory_xact_lock(hashtext('flowpilot_apt_' || ${organizationId}::text), hashtext(${appointment.staffMemberId}::text))
+        `;
+
+        const activeAppointments = await tx.appointment.findMany({
+          where: {
+            organizationId,
+            staffMemberId: appointment.staffMemberId,
+            id: { not: appointment.id },
+            status: { in: ['CONFIRMED', 'PENDING'] },
           },
+          select: {
+            id: true,
+            scheduledAt: true,
+            durationMinutes: true,
+          },
+        });
+
+        const appointmentStartTime = newStart.getTime();
+        const appointmentEndTime = newEnd.getTime();
+        const hasConflict = activeAppointments.some((apt) => {
+          const existingStart = new Date(apt.scheduledAt).getTime();
+          const existingEnd = existingStart + apt.durationMinutes * 60 * 1000;
+          return appointmentStartTime < existingEnd && appointmentEndTime > existingStart;
+        });
+
+        if (hasConflict) {
+          throw new BadRequestError(
+            'The assigned specialist is not available at the selected time. Please choose another slot.',
+          );
+        }
+      }
+
+      return tx.appointment.update({
+        where: { id: appointment.id },
+        data: {
+          scheduledAt: newStart,
+          status: 'CONFIRMED',
+        },
+        include: {
+          service: true,
+          staffMember: true,
         },
       });
-
-      if (conflict) {
-        throw new BadRequestError(
-          'The assigned specialist is not available at the selected time. Please choose another slot.',
-        );
-      }
-    }
-
-    const updated = await prisma.appointment.update({
-      where: { id: appointment.id },
-      data: {
-        scheduledAt: newStart,
-        status: 'CONFIRMED',
-      },
-      include: {
-        service: true,
-        staffMember: true,
-      },
     });
 
     logger.info(

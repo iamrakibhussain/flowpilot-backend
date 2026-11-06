@@ -768,6 +768,7 @@ export class RecurringService {
           await prisma.$transaction(async (tx) => {
             const invoiceNumber = await InvoiceService.generateInvoiceNumber(
               schedule.organizationId,
+              tx,
             );
             const dueDate = new Date(now.getTime() + schedule.paymentDueDays * 24 * 60 * 60 * 1000);
             const paymentToken = crypto.randomBytes(32).toString('hex');
