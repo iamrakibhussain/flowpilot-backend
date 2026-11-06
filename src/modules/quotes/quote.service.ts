@@ -1,10 +1,11 @@
 import crypto from 'node:crypto';
-import { Prisma } from '@prisma/client';
+import { Prisma, FlowRuleTrigger } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import { NotFoundError, BadRequestError } from '../../common/errors/app-error.js';
 import { EmailService } from '../../common/email/email.service.js';
 import { NotificationService } from '../notifications/notification.service.js';
 import { InvoiceService } from '../invoices/invoice.service.js';
+import { FlowRulesService } from '../flow-rules/flow-rules.service.js';
 import { env } from '../../config/env.js';
 import {
   ListQuotesQuery,
@@ -963,6 +964,22 @@ export class QuoteService {
       message: `${input.signerName} accepted proposal "${quote.title}" (${quote.organization.currency} ${Number(quote.totalAmount).toFixed(2)}).`,
       actionUrl: `/dashboard/quotes`,
       metadata: { quoteId: quote.id, customerId: quote.customerId, autoInvoiceId },
+    });
+
+    // Autonomous FlowRules Trigger (non-blocking)
+    FlowRulesService.dispatch(quote.organizationId, FlowRuleTrigger.QUOTE_ACCEPTED, {
+      entityId: quote.id,
+      customerId: quote.customerId,
+      title: quote.title,
+      amount: Number(quote.totalAmount),
+      metadata: {
+        quoteNumber: quote.quoteNumber,
+        signerName: input.signerName,
+        customerEmail: quote.customer.email,
+        autoInvoiceId,
+      },
+    }).catch(() => {
+      // Non-blocking
     });
 
     return {

@@ -1,10 +1,11 @@
 import { randomUUID, createHash } from 'crypto';
 import { prisma } from '../../database/prisma.js';
 import { NotFoundError, BadRequestError } from '../../common/errors/app-error.js';
-import { ContractStatus, Prisma } from '@prisma/client';
+import { ContractStatus, FlowRuleTrigger, Prisma } from '@prisma/client';
 import { logger } from '../../common/logging/logger.js';
 import { NotificationService } from '../notifications/notification.service.js';
 import { EmailService } from '../../common/email/email.service.js';
+import { FlowRulesService } from '../flow-rules/flow-rules.service.js';
 import { env } from '../../config/env.js';
 import type {
   CreateContractInput,
@@ -478,6 +479,19 @@ export class ContractService {
       },
       'Contract cryptographically signed by client',
     );
+
+    // Autonomous FlowRules Trigger (non-blocking)
+    FlowRulesService.dispatch(contract.organizationId, FlowRuleTrigger.CONTRACT_SIGNED, {
+      entityId: contract.id,
+      customerId: contract.customerId,
+      title: contract.title,
+      metadata: {
+        signerEmail: input.signerEmail,
+        signerName: input.signerName,
+      },
+    }).catch((err) => {
+      logger.error({ err }, 'FlowRules: failed dispatching CONTRACT_SIGNED');
+    });
 
     return {
       success: true,
