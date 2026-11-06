@@ -256,11 +256,7 @@ export class PortalController {
   /**
    * Get single contract
    */
-  public static async getContract(
-    req: Request,
-    res: Response,
-    next: NextFunction,
-  ): Promise<void> {
+  public static async getContract(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       if (!req.portalContext) throw new UnauthorizedError('Portal context missing');
       const contractId = req.params.id;
@@ -279,11 +275,7 @@ export class PortalController {
   /**
    * Execute in-portal digital signature
    */
-  public static async signContract(
-    req: Request,
-    res: Response,
-    next: NextFunction,
-  ): Promise<void> {
+  public static async signContract(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       if (!req.portalContext) throw new UnauthorizedError('Portal context missing');
       const contractId = req.params.id;
@@ -308,11 +300,7 @@ export class PortalController {
   /**
    * Accept proposal/quote in-portal
    */
-  public static async acceptQuote(
-    req: Request,
-    res: Response,
-    next: NextFunction,
-  ): Promise<void> {
+  public static async acceptQuote(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       if (!req.portalContext) throw new UnauthorizedError('Portal context missing');
       const quoteId = req.params.id;

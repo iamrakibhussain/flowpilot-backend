@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { Prisma } from '@prisma/client';
+import { Prisma, ContractStatus } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import { generateSessionToken, hashSessionToken } from '../auth/crypto.js';
 import { EmailService } from '../../common/email/email.service.js';
@@ -964,7 +964,7 @@ export class PortalService {
           viewedAt: new Date(),
         },
       });
-      contract.status = 'VIEWED' as any;
+      contract.status = ContractStatus.VIEWED;
     }
 
     return contract;
@@ -1122,7 +1122,9 @@ export class PortalService {
     });
 
     const now = new Date();
-    await (prisma as any).quote.update({
+    await (
+      prisma as unknown as { quote: { update: (args: unknown) => Promise<unknown> } }
+    ).quote.update({
       where: { id: quote.id },
       data: {
         status: 'ACCEPTED',

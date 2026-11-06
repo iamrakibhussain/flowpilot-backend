@@ -45,11 +45,7 @@ export type UpdatePortalProfileInput = z.infer<typeof updatePortalProfileSchema>
 
 export const signPortalContractSchema = z.object({
   signerName: z.string().min(1, 'Full legal name is required').max(100).trim(),
-  signerEmail: z
-    .string()
-    .email('Valid email address is required')
-    .toLowerCase()
-    .trim(),
+  signerEmail: z.string().email('Valid email address is required').toLowerCase().trim(),
   signatureData: z.string().min(10, 'Signature drawing or representation is required'),
   signatureType: z.enum(['CANVAS', 'TYPED']).default('CANVAS'),
   clientNotes: z.string().max(500).optional().nullable(),
