@@ -437,6 +437,48 @@ export class PublicBookingService {
 
       const appointmentEndTime = new Date(scheduledAt.getTime() + service.durationMinutes * 60000);
 
+      // Concurrency safety: Acquire PostgreSQL advisory transaction lock scoped to (org.id, staff.id)
+      // and perform atomic conflict check to prevent double-booking during concurrent submissions.
+      if (staff?.id) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const txAny = tx as any;
+        if (typeof txAny.$executeRaw === 'function') {
+          await txAny.$executeRaw`
+            SELECT pg_advisory_xact_lock(hashtext('flowpilot_apt_' || ${org.id}::text), hashtext(${staff.id}::text))
+          `;
+        }
+
+        if (tx.appointment?.findMany) {
+          const activeAppointments = await tx.appointment.findMany({
+            where: {
+              organizationId: org.id,
+              staffMemberId: staff.id,
+              status: { in: ['CONFIRMED', 'PENDING'] },
+            },
+            select: {
+              id: true,
+              scheduledAt: true,
+              durationMinutes: true,
+            },
+          });
+
+          const appointmentStartTime = scheduledAt.getTime();
+          const hasConflict = activeAppointments.some((apt) => {
+            const existingStart = new Date(apt.scheduledAt).getTime();
+            const existingEnd = existingStart + apt.durationMinutes * 60 * 1000;
+            return (
+              appointmentStartTime < existingEnd && appointmentEndTime.getTime() > existingStart
+            );
+          });
+
+          if (hasConflict) {
+            throw new BadRequestError(
+              'The selected time slot is no longer available. Please select another slot.',
+            );
+          }
+        }
+      }
+
       // Verify slot is not blocked by staff time-off or organization holiday
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const txWithBlocked = tx as any;

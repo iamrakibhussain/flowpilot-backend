@@ -234,6 +234,7 @@ model Organization {
   recurringSchedules     RecurringSchedule[]
   retainerHourLogs       RetainerHourLog[]
   flowRules              FlowRule[]
+  organizationSequences  OrganizationSequence[]
 
   @@map("organizations")
 }
@@ -1038,4 +1039,19 @@ model FlowRuleExecution {
   @@index([ruleId, executedAt])
   @@index([organizationId, executedAt])
   @@map("flow_rule_executions")
+}
+
+model OrganizationSequence {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  entityType     String   @map("entity_type")
+  year           Int
+  lastSequence   Int      @default(0) @map("last_sequence")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, entityType, year])
+  @@index([organizationId])
+  @@map("organization_sequences")
 }

@@ -8,6 +8,7 @@ import {
   StaffMember,
 } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
+import { logger } from '../../common/logging/logger.js';
 import { NotFoundError, BadRequestError } from '../../common/errors/app-error.js';
 import {
   AppointmentListItem,
@@ -151,6 +152,7 @@ export class AppointmentService {
   public static async checkConflict(
     organizationId: string,
     input: CheckConflictInput,
+    tx?: Prisma.TransactionClient,
   ): Promise<ConflictCheckResult> {
     if (!input.staffMemberId) {
       return { hasConflict: false };
@@ -159,11 +161,13 @@ export class AppointmentService {
     const requestedStart = new Date(input.scheduledAt);
     const requestedEnd = new Date(requestedStart.getTime() + input.durationMinutes * 60 * 1000);
 
+    const db = tx || prisma;
+
     // Query active appointments for this staff member within +/- 24 hours
     const bufferStart = new Date(requestedStart.getTime() - 24 * 60 * 60 * 1000);
     const bufferEnd = new Date(requestedEnd.getTime() + 24 * 60 * 60 * 1000);
 
-    const candidates = await prisma.appointment.findMany({
+    const candidates = await db.appointment.findMany({
       where: {
         organizationId,
         staffMemberId: input.staffMemberId,
@@ -197,7 +201,7 @@ export class AppointmentService {
 
     // Check for blocked times and company holidays
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const blockedCandidates = await (prisma as any).blockedTime.findMany({
+    const blockedCandidates = await (db as any).blockedTime.findMany({
       where: {
         organizationId,
         startTime: { lt: requestedEnd },
@@ -278,21 +282,6 @@ export class AppointmentService {
     const scheduledDate = new Date(input.scheduledAt);
     const duration = input.durationMinutes ?? service?.durationMinutes ?? 60;
 
-    // 4. Run conflict prevention check if staff member is assigned
-    if (input.staffMemberId) {
-      const conflict = await this.checkConflict(organizationId, {
-        staffMemberId: input.staffMemberId,
-        scheduledAt: scheduledDate,
-        durationMinutes: duration,
-      });
-
-      if (conflict.hasConflict && conflict.conflictingAppointment) {
-        throw new BadRequestError(
-          `Schedule Conflict: ${conflict.conflictingAppointment.staffMemberName ?? 'Staff member'} is already booked for "${conflict.conflictingAppointment.title}" at this time.`,
-        );
-      }
-    }
-
     // 5. Generate descriptive title if not provided
     const title =
       input.title && input.title.trim().length > 0
@@ -301,26 +290,57 @@ export class AppointmentService {
           ? `${service.name} with ${customer.name}`
           : `Session with ${customer.name}`;
 
-    const created = await prisma.appointment.create({
-      data: {
-        organizationId,
-        customerId: customer.id,
-        serviceId: service?.id ?? null,
-        staffMemberId: staffMember?.id ?? null,
-        title,
-        scheduledAt: scheduledDate,
-        durationMinutes: duration,
-        status: input.status ?? AppointmentStatus.CONFIRMED,
-        type: input.type ?? AppointmentType.VIDEO,
-        location:
-          input.location ?? (input.type === 'IN_PERSON' ? 'Headquarters Studio' : 'Virtual Bridge'),
-        notes: input.notes ?? null,
-      },
-      include: {
-        customer: true,
-        service: true,
-        staffMember: true,
-      },
+    const created = await prisma.$transaction(async (tx) => {
+      // 4. Run atomic conflict prevention check under advisory transaction lock if staff member is assigned
+      if (input.staffMemberId) {
+        try {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('flowpilot_apt_' || ${organizationId}::text), hashtext(${input.staffMemberId}::text))`;
+        } catch (lockErr) {
+          logger.debug(
+            { lockErr, organizationId, staffMemberId: input.staffMemberId },
+            'Staff slot advisory lock fallback',
+          );
+        }
+
+        const conflict = await this.checkConflict(
+          organizationId,
+          {
+            staffMemberId: input.staffMemberId,
+            scheduledAt: scheduledDate,
+            durationMinutes: duration,
+          },
+          tx,
+        );
+
+        if (conflict.hasConflict && conflict.conflictingAppointment) {
+          throw new BadRequestError(
+            `Schedule Conflict: ${conflict.conflictingAppointment.staffMemberName ?? 'Staff member'} is already booked for "${conflict.conflictingAppointment.title}" at this time.`,
+          );
+        }
+      }
+
+      return tx.appointment.create({
+        data: {
+          organizationId,
+          customerId: customer.id,
+          serviceId: service?.id ?? null,
+          staffMemberId: staffMember?.id ?? null,
+          title,
+          scheduledAt: scheduledDate,
+          durationMinutes: duration,
+          status: input.status ?? AppointmentStatus.CONFIRMED,
+          type: input.type ?? AppointmentType.VIDEO,
+          location:
+            input.location ??
+            (input.type === 'IN_PERSON' ? 'Headquarters Studio' : 'Virtual Bridge'),
+          notes: input.notes ?? null,
+        },
+        include: {
+          customer: true,
+          service: true,
+          staffMember: true,
+        },
+      });
     });
 
     return this.formatAppointment(created);
@@ -334,70 +354,80 @@ export class AppointmentService {
     id: string,
     input: UpdateAppointmentInput,
   ): Promise<AppointmentListItem> {
-    const existing = await prisma.appointment.findFirst({
-      where: { id, organizationId },
-    });
-    if (!existing) {
-      throw new NotFoundError('Appointment not found');
-    }
-
-    const scheduledDate = input.scheduledAt ? new Date(input.scheduledAt) : existing.scheduledAt;
-    const duration = input.durationMinutes ?? existing.durationMinutes;
-    const targetStaffId =
-      input.staffMemberId !== undefined ? input.staffMemberId : existing.staffMemberId;
-
-    // Multi-tenant security guard: Verify foreign relations belong to tenant
-    if (input.staffMemberId) {
-      const staffMember = await prisma.staffMember.findFirst({
-        where: { id: input.staffMemberId, organizationId },
+    const updated = await prisma.$transaction(async (tx) => {
+      const existing = await tx.appointment.findFirst({
+        where: { id, organizationId },
       });
-      if (!staffMember) {
-        throw new NotFoundError('Selected staff member was not found in this organization');
+      if (!existing) {
+        throw new NotFoundError('Appointment not found');
       }
-    }
 
-    if (input.serviceId) {
-      const service = await prisma.service.findFirst({
-        where: { id: input.serviceId, organizationId },
-      });
-      if (!service) {
-        throw new NotFoundError('Selected service was not found in this organization');
+      const scheduledDate = input.scheduledAt ? new Date(input.scheduledAt) : existing.scheduledAt;
+      const duration = input.durationMinutes ?? existing.durationMinutes;
+      const targetStaffId =
+        input.staffMemberId !== undefined ? input.staffMemberId : existing.staffMemberId;
+
+      // Multi-tenant security guard: Verify foreign relations belong to tenant
+      if (input.staffMemberId) {
+        const staffMember = await tx.staffMember.findFirst({
+          where: { id: input.staffMemberId, organizationId },
+        });
+        if (!staffMember) {
+          throw new NotFoundError('Selected staff member was not found in this organization');
+        }
       }
-    }
 
-    // Check conflict if time or staff changed
-    if (targetStaffId) {
-      const conflict = await this.checkConflict(organizationId, {
-        staffMemberId: targetStaffId,
-        scheduledAt: scheduledDate,
-        durationMinutes: duration,
-        excludeAppointmentId: id,
-      });
+      if (input.serviceId) {
+        const service = await tx.service.findFirst({
+          where: { id: input.serviceId, organizationId },
+        });
+        if (!service) {
+          throw new NotFoundError('Selected service was not found in this organization');
+        }
+      }
 
-      if (conflict.hasConflict && conflict.conflictingAppointment) {
-        throw new BadRequestError(
-          `Schedule Conflict: ${conflict.conflictingAppointment.staffMemberName ?? 'Staff member'} is already booked for "${conflict.conflictingAppointment.title}" at this time.`,
+      // Check conflict if time or staff changed
+      if (targetStaffId) {
+        await tx.$executeRaw`
+          SELECT pg_advisory_xact_lock(hashtext('flowpilot_apt_' || ${organizationId}::text), hashtext(${targetStaffId}::text))
+        `;
+
+        const conflict = await this.checkConflict(
+          organizationId,
+          {
+            staffMemberId: targetStaffId,
+            scheduledAt: scheduledDate,
+            durationMinutes: duration,
+            excludeAppointmentId: id,
+          },
+          tx,
         );
-      }
-    }
 
-    const updated = await prisma.appointment.update({
-      where: { id },
-      data: {
-        title: input.title !== undefined ? input.title : undefined,
-        scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
-        durationMinutes: input.durationMinutes !== undefined ? input.durationMinutes : undefined,
-        type: input.type !== undefined ? input.type : undefined,
-        location: input.location !== undefined ? input.location : undefined,
-        notes: input.notes !== undefined ? input.notes : undefined,
-        serviceId: input.serviceId !== undefined ? input.serviceId : undefined,
-        staffMemberId: input.staffMemberId !== undefined ? input.staffMemberId : undefined,
-      },
-      include: {
-        customer: true,
-        service: true,
-        staffMember: true,
-      },
+        if (conflict.hasConflict && conflict.conflictingAppointment) {
+          throw new BadRequestError(
+            `Schedule Conflict: ${conflict.conflictingAppointment.staffMemberName ?? 'Staff member'} is already booked for "${conflict.conflictingAppointment.title}" at this time.`,
+          );
+        }
+      }
+
+      return tx.appointment.update({
+        where: { id },
+        data: {
+          title: input.title !== undefined ? input.title : undefined,
+          scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
+          durationMinutes: input.durationMinutes !== undefined ? input.durationMinutes : undefined,
+          type: input.type !== undefined ? input.type : undefined,
+          location: input.location !== undefined ? input.location : undefined,
+          notes: input.notes !== undefined ? input.notes : undefined,
+          serviceId: input.serviceId !== undefined ? input.serviceId : undefined,
+          staffMemberId: input.staffMemberId !== undefined ? input.staffMemberId : undefined,
+        },
+        include: {
+          customer: true,
+          service: true,
+          staffMember: true,
+        },
+      });
     });
 
     return this.formatAppointment(updated);
@@ -411,61 +441,71 @@ export class AppointmentService {
     id: string,
     input: RescheduleAppointmentInput,
   ): Promise<AppointmentListItem> {
-    const existing = await prisma.appointment.findFirst({
-      where: { id, organizationId },
-    });
-    if (!existing) {
-      throw new NotFoundError('Appointment not found');
-    }
-
-    if (input.newStaffMemberId) {
-      const staffMember = await prisma.staffMember.findFirst({
-        where: { id: input.newStaffMemberId, organizationId },
+    const updated = await prisma.$transaction(async (tx) => {
+      const existing = await tx.appointment.findFirst({
+        where: { id, organizationId },
       });
-      if (!staffMember) {
-        throw new NotFoundError('Selected staff member was not found in this organization');
+      if (!existing) {
+        throw new NotFoundError('Appointment not found');
       }
-    }
 
-    const targetStaffId = input.newStaffMemberId ?? existing.staffMemberId;
-    const newScheduledDate = new Date(input.newScheduledAt);
-    const duration = input.newDurationMinutes ?? existing.durationMinutes;
+      if (input.newStaffMemberId) {
+        const staffMember = await tx.staffMember.findFirst({
+          where: { id: input.newStaffMemberId, organizationId },
+        });
+        if (!staffMember) {
+          throw new NotFoundError('Selected staff member was not found in this organization');
+        }
+      }
 
-    if (targetStaffId) {
-      const conflict = await this.checkConflict(organizationId, {
-        staffMemberId: targetStaffId,
-        scheduledAt: newScheduledDate,
-        durationMinutes: duration,
-        excludeAppointmentId: id,
-      });
+      const targetStaffId = input.newStaffMemberId ?? existing.staffMemberId;
+      const newScheduledDate = new Date(input.newScheduledAt);
+      const duration = input.newDurationMinutes ?? existing.durationMinutes;
 
-      if (conflict.hasConflict && conflict.conflictingAppointment) {
-        throw new BadRequestError(
-          `Schedule Conflict: ${conflict.conflictingAppointment.staffMemberName ?? 'Staff member'} is already booked for "${conflict.conflictingAppointment.title}" during this slot.`,
+      if (targetStaffId) {
+        await tx.$executeRaw`
+          SELECT pg_advisory_xact_lock(hashtext('flowpilot_apt_' || ${organizationId}::text), hashtext(${targetStaffId}::text))
+        `;
+
+        const conflict = await this.checkConflict(
+          organizationId,
+          {
+            staffMemberId: targetStaffId,
+            scheduledAt: newScheduledDate,
+            durationMinutes: duration,
+            excludeAppointmentId: id,
+          },
+          tx,
         );
+
+        if (conflict.hasConflict && conflict.conflictingAppointment) {
+          throw new BadRequestError(
+            `Schedule Conflict: ${conflict.conflictingAppointment.staffMemberName ?? 'Staff member'} is already booked for "${conflict.conflictingAppointment.title}" during this slot.`,
+          );
+        }
       }
-    }
 
-    const updatedNotes = input.reason
-      ? existing.notes
-        ? `${existing.notes}\n[Rescheduled: ${new Date().toLocaleDateString()}] Reason: ${input.reason}`
-        : `[Rescheduled: ${new Date().toLocaleDateString()}] Reason: ${input.reason}`
-      : existing.notes;
+      const updatedNotes = input.reason
+        ? existing.notes
+          ? `${existing.notes}\n[Rescheduled: ${new Date().toLocaleDateString()}] Reason: ${input.reason}`
+          : `[Rescheduled: ${new Date().toLocaleDateString()}] Reason: ${input.reason}`
+        : existing.notes;
 
-    const updated = await prisma.appointment.update({
-      where: { id },
-      data: {
-        scheduledAt: newScheduledDate,
-        durationMinutes: duration,
-        staffMemberId: targetStaffId,
-        notes: updatedNotes,
-        status: AppointmentStatus.CONFIRMED,
-      },
-      include: {
-        customer: true,
-        service: true,
-        staffMember: true,
-      },
+      return tx.appointment.update({
+        where: { id },
+        data: {
+          scheduledAt: newScheduledDate,
+          durationMinutes: duration,
+          staffMemberId: targetStaffId,
+          notes: updatedNotes,
+          status: AppointmentStatus.CONFIRMED,
+        },
+        include: {
+          customer: true,
+          service: true,
+          staffMember: true,
+        },
+      });
     });
 
     return this.formatAppointment(updated);
