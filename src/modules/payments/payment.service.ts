@@ -2,10 +2,11 @@ import { randomUUID } from 'crypto';
 import Stripe from 'stripe';
 import { prisma } from '../../database/prisma.js';
 import { NotFoundError, BadRequestError } from '../../common/errors/app-error.js';
-import { InvoiceStatus, TransactionStatus, Prisma } from '@prisma/client';
+import { InvoiceStatus, TransactionStatus, Prisma, FlowRuleTrigger } from '@prisma/client';
 import { logger } from '../../common/logging/logger.js';
 import { NotificationService } from '../notifications/notification.service.js';
 import { EmailService } from '../../common/email/email.service.js';
+import { FlowRulesService } from '../flow-rules/flow-rules.service.js';
 import { env } from '../../config/env.js';
 import {
   PublicInvoiceResponse,
@@ -74,6 +75,22 @@ export class PaymentService {
         logger.error({ err }, 'Failed to dispatch payment receipt email');
       });
     }
+
+    // 3. Autonomous FlowRules Trigger (non-blocking)
+    FlowRulesService.dispatch(params.organizationId, FlowRuleTrigger.INVOICE_PAID, {
+      entityId: params.invoiceId,
+      customerId: params.customerId,
+      title: `Invoice ${params.invoiceNumber}`,
+      amount: params.amount,
+      metadata: {
+        invoiceNumber: params.invoiceNumber,
+        customerEmail: params.customerEmail,
+        paymentMethod: params.paymentMethod,
+        provider: params.provider,
+      },
+    }).catch((err) => {
+      logger.error({ err }, 'FlowRules: failed dispatching INVOICE_PAID');
+    });
   }
   /**
    * Resolve Stripe SDK instance strictly for an organization's configured API key

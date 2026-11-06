@@ -1,9 +1,17 @@
-import { InvoiceStatus, Prisma, Invoice, Customer, InvoiceItem } from '@prisma/client';
+import {
+  InvoiceStatus,
+  Prisma,
+  Invoice,
+  Customer,
+  InvoiceItem,
+  FlowRuleTrigger,
+} from '@prisma/client';
 import crypto from 'node:crypto';
 import { prisma } from '../../database/prisma.js';
 import { NotFoundError, BadRequestError } from '../../common/errors/app-error.js';
 import { EmailService } from '../../common/email/email.service.js';
 import { NotificationService } from '../notifications/notification.service.js';
+import { FlowRulesService } from '../flow-rules/flow-rules.service.js';
 import { env } from '../../config/env.js';
 import {
   ListInvoicesQuery,
@@ -527,6 +535,19 @@ export class InvoiceService {
       },
     });
 
+    if (status === InvoiceStatus.PAID) {
+      FlowRulesService.dispatch(organizationId, FlowRuleTrigger.INVOICE_PAID, {
+        entityId: updated.id,
+        customerId: updated.customerId,
+        title: `Invoice ${updated.invoiceNumber}`,
+        amount: Number(updated.total),
+        metadata: {
+          invoiceNumber: updated.invoiceNumber,
+          customerEmail: updated.customer.email,
+        },
+      }).catch(() => {});
+    }
+
     return this.formatInvoice(updated);
   }
 
@@ -563,6 +584,18 @@ export class InvoiceService {
         items: true,
       },
     });
+
+    FlowRulesService.dispatch(organizationId, FlowRuleTrigger.INVOICE_PAID, {
+      entityId: updated.id,
+      customerId: updated.customerId,
+      title: `Invoice ${updated.invoiceNumber}`,
+      amount: Number(updated.total),
+      metadata: {
+        invoiceNumber: updated.invoiceNumber,
+        customerEmail: updated.customer.email,
+        paymentMethod: input.paymentMethod,
+      },
+    }).catch(() => {});
 
     return this.formatInvoice(updated);
   }

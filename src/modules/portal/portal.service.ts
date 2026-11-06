@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { Prisma } from '@prisma/client';
+import { Prisma, ContractStatus } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import { generateSessionToken, hashSessionToken } from '../auth/crypto.js';
 import { EmailService } from '../../common/email/email.service.js';
@@ -10,6 +10,10 @@ import {
   UnauthorizedError,
 } from '../../common/errors/app-error.js';
 import { logger } from '../../common/logging/logger.js';
+import { FlowRulesService } from '../flow-rules/flow-rules.service.js';
+import { FlowRuleTrigger } from '../flow-rules/flow-rules.types.js';
+import { PublicBookingService } from '../public-booking/public-booking.service.js';
+import { QuoteService } from '../quotes/quote.service.js';
 import type {
   RequestPortalLinkInput,
   VerifyPortalTokenInput,
@@ -18,6 +22,10 @@ import type {
   UpdatePortalProfileInput,
   PortalQuoteSummary,
   PortalProjectSummary,
+  PortalContractSummary,
+  PortalNotificationSummary,
+  SignPortalContractInput,
+  AcceptPortalQuoteInput,
 } from './portal.types.js';
 
 interface RawQuoteItem {
@@ -303,120 +311,130 @@ export class PortalService {
    * Fetches the complete portal dashboard state for the authenticated customer.
    */
   public static async getPortalDashboardData(organizationId: string, customerId: string) {
-    const [organization, customer, appointments, invoices, quotes, projects] = await Promise.all([
-      prisma.organization.findUnique({
-        where: { id: organizationId },
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          brandColor: true,
-          logoUrl: true,
-          tagline: true,
-          customDomain: true,
-          contactEmail: true,
-          contactPhone: true,
-          address: true,
-          currency: true,
-          timezone: true,
-          minNoticeHours: true,
-          cancellationHours: true,
-          bookingEnabled: true,
-        },
-      }),
-      prisma.customer.findUnique({
-        where: { id: customerId },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          phone: true,
-          company: true,
-          createdAt: true,
-        },
-      }),
-      prisma.appointment.findMany({
-        where: {
-          organizationId,
-          customerId,
-        },
-        include: {
-          service: {
-            select: {
-              id: true,
-              name: true,
-              price: true,
-              durationMinutes: true,
+    const [organization, customer, appointments, invoices, quotes, projects, contracts] =
+      await Promise.all([
+        prisma.organization.findUnique({
+          where: { id: organizationId },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            brandColor: true,
+            logoUrl: true,
+            tagline: true,
+            customDomain: true,
+            contactEmail: true,
+            contactPhone: true,
+            address: true,
+            currency: true,
+            timezone: true,
+            minNoticeHours: true,
+            cancellationHours: true,
+            bookingEnabled: true,
+          },
+        }),
+        prisma.customer.findUnique({
+          where: { id: customerId },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            company: true,
+            createdAt: true,
+          },
+        }),
+        prisma.appointment.findMany({
+          where: {
+            organizationId,
+            customerId,
+          },
+          include: {
+            service: {
+              select: {
+                id: true,
+                name: true,
+                price: true,
+                durationMinutes: true,
+              },
+            },
+            staffMember: {
+              select: {
+                id: true,
+                name: true,
+                roleTitle: true,
+                initials: true,
+                avatarBg: true,
+              },
             },
           },
-          staffMember: {
-            select: {
-              id: true,
-              name: true,
-              roleTitle: true,
-              initials: true,
-              avatarBg: true,
+          orderBy: {
+            scheduledAt: 'desc',
+          },
+        }),
+        prisma.invoice.findMany({
+          where: {
+            organizationId,
+            customerId,
+          },
+          include: {
+            items: true,
+            transactions: {
+              select: {
+                id: true,
+                amount: true,
+                status: true,
+                paidAt: true,
+                provider: true,
+              },
             },
           },
-        },
-        orderBy: {
-          scheduledAt: 'desc',
-        },
-      }),
-      prisma.invoice.findMany({
-        where: {
-          organizationId,
-          customerId,
-        },
-        include: {
-          items: true,
-          transactions: {
-            select: {
-              id: true,
-              amount: true,
-              status: true,
-              paidAt: true,
-              provider: true,
+          orderBy: {
+            createdAt: 'desc',
+          },
+        }),
+        prismaQuotes.quote.findMany({
+          where: {
+            organizationId,
+            customerId,
+          },
+          include: {
+            items: true,
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        }),
+        prisma.project.findMany({
+          where: {
+            organizationId,
+            customerId,
+          },
+          include: {
+            tasks: {
+              select: {
+                id: true,
+                title: true,
+                status: true,
+                priority: true,
+                dueDate: true,
+              },
             },
           },
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      }),
-      prismaQuotes.quote.findMany({
-        where: {
-          organizationId,
-          customerId,
-        },
-        include: {
-          items: true,
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      }),
-      prisma.project.findMany({
-        where: {
-          organizationId,
-          customerId,
-        },
-        include: {
-          tasks: {
-            select: {
-              id: true,
-              title: true,
-              status: true,
-              priority: true,
-              dueDate: true,
-            },
+          orderBy: {
+            createdAt: 'desc',
           },
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      }),
-    ]);
+        }),
+        prisma.contract.findMany({
+          where: {
+            organizationId,
+            customerId,
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        }),
+      ]);
 
     if (!organization || !customer) {
       throw new NotFoundError('Customer or Organization records not found');
@@ -528,6 +546,38 @@ export class PortalService {
       };
     });
 
+    let pendingContractsCount = 0;
+    let signedContractsCount = 0;
+
+    const formattedContracts: PortalContractSummary[] = (contracts || []).map((c) => {
+      if (c.status === 'PENDING_SIGNATURE' || c.status === 'VIEWED' || c.status === 'DRAFT') {
+        pendingContractsCount++;
+      } else if (c.status === 'SIGNED' || c.status === 'COUNTERSIGNED') {
+        signedContractsCount++;
+      }
+
+      return {
+        id: c.id,
+        contractNumber: c.contractNumber,
+        title: c.title,
+        content: c.content,
+        status: c.status,
+        issuedAt: c.issuedAt.toISOString(),
+        expiresAt: c.expiresAt ? c.expiresAt.toISOString() : null,
+        viewedAt: c.viewedAt ? c.viewedAt.toISOString() : null,
+        signedAt: c.signedAt ? c.signedAt.toISOString() : null,
+        signerName: c.signerName,
+        signerEmail: c.signerEmail,
+        signatureData: c.signatureData,
+        signatureType: c.signatureType,
+        contentChecksum: c.contentChecksum,
+        countersignedAt: c.countersignedAt ? c.countersignedAt.toISOString() : null,
+        countersignerName: c.countersignerName,
+        quoteId: c.quoteId,
+        projectId: c.projectId,
+      };
+    });
+
     return {
       organization,
       customer,
@@ -562,6 +612,14 @@ export class PortalService {
             (p) => p.status === 'ACTIVE' || p.status === 'PLANNING',
           ).length,
           completedCount: formattedProjects.filter((p) => p.status === 'COMPLETED').length,
+        },
+      },
+      contracts: {
+        list: formattedContracts,
+        metrics: {
+          totalContracts: formattedContracts.length,
+          pendingCount: pendingContractsCount,
+          signedCount: signedContractsCount,
         },
       },
     };
@@ -819,5 +877,432 @@ export class PortalService {
     await prisma.customerPortalSession.deleteMany({
       where: { sessionHash },
     });
+  }
+
+  /**
+   * List contracts belonging to the authenticated customer.
+   */
+  public static async listContracts(organizationId: string, customerId: string) {
+    const contracts = await prisma.contract.findMany({
+      where: {
+        organizationId,
+        customerId,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return contracts.map((c) => ({
+      id: c.id,
+      contractNumber: c.contractNumber,
+      title: c.title,
+      content: c.content,
+      status: c.status,
+      issuedAt: c.issuedAt.toISOString(),
+      expiresAt: c.expiresAt ? c.expiresAt.toISOString() : null,
+      viewedAt: c.viewedAt ? c.viewedAt.toISOString() : null,
+      signedAt: c.signedAt ? c.signedAt.toISOString() : null,
+      signerName: c.signerName,
+      signerEmail: c.signerEmail,
+      signatureData: c.signatureData,
+      signatureType: c.signatureType,
+      contentChecksum: c.contentChecksum,
+      countersignedAt: c.countersignedAt ? c.countersignedAt.toISOString() : null,
+      countersignerName: c.countersignerName,
+      quoteId: c.quoteId,
+      projectId: c.projectId,
+    }));
+  }
+
+  /**
+   * Get single contract with clauses and mark as VIEWED if pending.
+   */
+  public static async getContractById(
+    organizationId: string,
+    customerId: string,
+    contractId: string,
+  ) {
+    const contract = await prisma.contract.findFirst({
+      where: {
+        id: contractId,
+        organizationId,
+        customerId,
+      },
+      include: {
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            logoUrl: true,
+            brandColor: true,
+            contactEmail: true,
+            contactPhone: true,
+            address: true,
+          },
+        },
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            company: true,
+          },
+        },
+      },
+    });
+
+    if (!contract) {
+      throw new NotFoundError('Contract not found');
+    }
+
+    // Auto-update to VIEWED if currently PENDING_SIGNATURE or DRAFT
+    if (contract.status === 'PENDING_SIGNATURE' && !contract.viewedAt) {
+      await prisma.contract.update({
+        where: { id: contract.id },
+        data: {
+          status: 'VIEWED',
+          viewedAt: new Date(),
+        },
+      });
+      contract.status = ContractStatus.VIEWED;
+    }
+
+    return contract;
+  }
+
+  /**
+   * Executes in-portal digital signature ceremony for an authenticated customer.
+   */
+  public static async signContract(
+    organizationId: string,
+    customerId: string,
+    contractId: string,
+    input: SignPortalContractInput,
+    meta: { ipAddress?: string; userAgent?: string } = {},
+  ) {
+    const contract = await prisma.contract.findFirst({
+      where: {
+        id: contractId,
+        organizationId,
+        customerId,
+      },
+      include: {
+        customer: true,
+        organization: true,
+      },
+    });
+
+    if (!contract) {
+      throw new NotFoundError('Contract not found');
+    }
+
+    if (contract.status === 'SIGNED' || contract.status === 'COUNTERSIGNED') {
+      throw new BadRequestError('This contract has already been signed');
+    }
+
+    if (contract.status === 'VOIDED' || contract.status === 'DECLINED') {
+      throw new BadRequestError('This contract is no longer active');
+    }
+
+    if (contract.expiresAt && new Date() > contract.expiresAt) {
+      throw new BadRequestError('This contract has expired');
+    }
+
+    // Compute cryptographic SHA-256 hash
+    const contentChecksum = crypto
+      .createHash('sha256')
+      .update(contract.content + '|' + input.signerEmail + '|' + input.signerName)
+      .digest('hex');
+
+    const signed = await prisma.contract.update({
+      where: { id: contract.id },
+      data: {
+        status: 'SIGNED',
+        signedAt: new Date(),
+        signerName: input.signerName.trim(),
+        signerEmail: input.signerEmail.trim().toLowerCase(),
+        signerIp: meta.ipAddress || 'Client Portal Session',
+        signerUserAgent: meta.userAgent || 'Web Browser',
+        signatureData: input.signatureData,
+        signatureType: input.signatureType,
+        contentChecksum,
+        clientNotes: input.clientNotes ?? null,
+      },
+    });
+
+    // In-app alert for staff
+    NotificationService.createNotification({
+      organizationId,
+      type: 'CONTRACT_SIGNED',
+      title: `Contract Signed: ${contract.contractNumber}`,
+      message: `${contract.title} was signed by ${input.signerName} (${input.signerEmail}) in Client Portal.`,
+      actionUrl: `/dashboard/contracts?contractId=${contract.id}`,
+      metadata: {
+        contractId: contract.id,
+        customerId,
+        checksum: contentChecksum,
+      },
+    }).catch((err) => {
+      logger.error({ err }, 'Failed to create contract signed notification');
+    });
+
+    // Autonomous FlowRules Trigger (non-blocking)
+    FlowRulesService.dispatch(organizationId, FlowRuleTrigger.CONTRACT_SIGNED, {
+      entityId: contract.id,
+      customerId,
+      title: contract.title,
+      metadata: {
+        signerEmail: input.signerEmail,
+        signerName: input.signerName,
+      },
+    }).catch((err) => {
+      logger.error({ err }, 'FlowRules: failed dispatching CONTRACT_SIGNED');
+    });
+
+    logger.info(
+      {
+        contractId: contract.id,
+        customerId,
+        checksum: contentChecksum,
+      },
+      'Contract signed via client portal',
+    );
+
+    return {
+      success: true,
+      contractId: signed.id,
+      status: signed.status,
+      signedAt: signed.signedAt,
+      contentChecksum,
+    };
+  }
+
+  /**
+   * Accepts a proposal/quote in client portal and automatically prepares or converts to deposit invoice.
+   */
+  public static async acceptQuote(
+    organizationId: string,
+    customerId: string,
+    quoteId: string,
+    input: AcceptPortalQuoteInput,
+    meta: { ipAddress?: string } = {},
+  ) {
+    const quote = await prismaQuotes.quote.findFirst({
+      where: {
+        id: quoteId,
+        organizationId,
+        customerId,
+      },
+      include: {
+        customer: true,
+        organization: true,
+        items: true,
+      },
+    });
+
+    if (!quote) {
+      throw new NotFoundError('Proposal not found');
+    }
+
+    if (quote.status === 'ACCEPTED') {
+      throw new BadRequestError('This proposal has already been accepted');
+    }
+
+    if (quote.status === 'DECLINED') {
+      throw new BadRequestError('This proposal has been declined');
+    }
+
+    if (quote.expiresAt && new Date() > new Date(quote.expiresAt)) {
+      throw new BadRequestError('This proposal has expired');
+    }
+
+    const customer = await prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { email: true },
+    });
+
+    const now = new Date();
+    await (
+      prisma as unknown as { quote: { update: (args: unknown) => Promise<unknown> } }
+    ).quote.update({
+      where: { id: quote.id },
+      data: {
+        status: 'ACCEPTED',
+        acceptedAt: now,
+        signerName: input.signerName.trim(),
+        signerEmail: input.signerEmail?.trim().toLowerCase() || customer?.email || '',
+        signatureData: input.signatureData || null,
+        signerIp: meta.ipAddress || 'Client Portal',
+        clientNotes: input.clientNotes || null,
+      },
+    });
+
+    // Auto convert to formal invoice for payment collection
+    let convertedInvoiceId: string | undefined;
+    let paymentToken: string | undefined;
+
+    try {
+      const converted = await QuoteService.convertToInvoice(organizationId, 'system', quote.id);
+      convertedInvoiceId = converted.invoiceId;
+
+      const inv = await prisma.invoice.findUnique({
+        where: { id: converted.invoiceId },
+        select: { paymentToken: true },
+      });
+      paymentToken = inv?.paymentToken || undefined;
+    } catch (conversionErr) {
+      logger.warn({ conversionErr }, 'Portal auto-invoice generation skipped or already existed');
+    }
+
+    // In-app alert for staff
+    NotificationService.createNotification({
+      organizationId,
+      type: 'QUOTE_ACCEPTED',
+      title: `Proposal ${quote.quoteNumber} Accepted!`,
+      message: `${input.signerName} accepted proposal "${quote.title}" in Client Portal.`,
+      actionUrl: `/dashboard/quotes`,
+      metadata: { quoteId: quote.id, customerId, autoInvoiceId: convertedInvoiceId },
+    }).catch(() => {});
+
+    // Autonomous FlowRules Trigger (non-blocking)
+    FlowRulesService.dispatch(organizationId, FlowRuleTrigger.QUOTE_ACCEPTED, {
+      entityId: quote.id,
+      customerId,
+      title: quote.title,
+      amount: Number(quote.totalAmount),
+      metadata: {
+        quoteNumber: quote.quoteNumber,
+        signerName: input.signerName,
+        convertedInvoiceId,
+      },
+    }).catch(() => {});
+
+    return {
+      success: true,
+      quoteNumber: quote.quoteNumber,
+      acceptedAt: now.toISOString(),
+      convertedInvoiceId,
+      paymentToken,
+    };
+  }
+
+  /**
+   * Fetches real available slots for rescheduling an appointment.
+   */
+  public static async getAvailableSlotsForReschedule(
+    organizationId: string,
+    customerId: string,
+    appointmentId: string,
+    dateStr: string,
+  ) {
+    const appointment = await prisma.appointment.findFirst({
+      where: {
+        id: appointmentId,
+        organizationId,
+        customerId,
+      },
+      include: {
+        organization: true,
+      },
+    });
+
+    if (!appointment || !appointment.serviceId) {
+      return [];
+    }
+
+    return PublicBookingService.getAvailableSlots(
+      appointment.organization.slug,
+      appointment.serviceId,
+      dateStr,
+      appointment.staffMemberId || undefined,
+    );
+  }
+
+  /**
+   * Retrieves client notification feed and unread counter.
+   */
+  public static async getNotifications(organizationId: string, customerId: string) {
+    const notifications = await prisma.notification.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    const clientNotifications = notifications.filter((n) => {
+      const meta = n.metadata as Record<string, unknown> | null;
+      return meta?.customerId === customerId;
+    });
+
+    const unreadCount = clientNotifications.filter((n) => !n.isRead).length;
+
+    const formatted: PortalNotificationSummary[] = clientNotifications.map((n) => ({
+      id: n.id,
+      type: n.type,
+      title: n.title,
+      message: n.message,
+      actionUrl: n.actionUrl,
+      isRead: n.isRead,
+      createdAt: n.createdAt.toISOString(),
+    }));
+
+    return {
+      notifications: formatted,
+      unreadCount,
+    };
+  }
+
+  /**
+   * Mark a specific notification as read.
+   */
+  public static async markNotificationRead(
+    organizationId: string,
+    customerId: string,
+    notificationId: string,
+  ) {
+    const notification = await prisma.notification.findFirst({
+      where: { id: notificationId, organizationId },
+    });
+
+    if (!notification) {
+      throw new NotFoundError('Notification not found');
+    }
+
+    const meta = notification.metadata as Record<string, unknown> | null;
+    if (meta?.customerId !== customerId) {
+      throw new UnauthorizedError('Unauthorized access to this notification');
+    }
+
+    const updated = await prisma.notification.update({
+      where: { id: notificationId },
+      data: { isRead: true, readAt: new Date() },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Mark all client notifications as read.
+   */
+  public static async markAllNotificationsRead(organizationId: string, customerId: string) {
+    const notifications = await prisma.notification.findMany({
+      where: { organizationId, isRead: false },
+      take: 100,
+    });
+
+    const targetIds = notifications
+      .filter((n) => {
+        const meta = n.metadata as Record<string, unknown> | null;
+        return meta?.customerId === customerId;
+      })
+      .map((n) => n.id);
+
+    if (targetIds.length > 0) {
+      await prisma.notification.updateMany({
+        where: { id: { in: targetIds } },
+        data: { isRead: true, readAt: new Date() },
+      });
+    }
+
+    return { success: true, count: targetIds.length };
   }
 }

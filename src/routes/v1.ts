@@ -18,6 +18,7 @@ import { organizationRoutes } from '../modules/organizations/organization.routes
 import { portalRoutes } from '../modules/portal/portal.routes.js';
 import { notificationRoutes } from '../modules/notifications/notification.routes.js';
 import { recurringRoutes } from '../modules/recurring/recurring.routes.js';
+import flowRulesRoutes from '../modules/flow-rules/flow-rules.routes.js';
 
 const router = Router();
 
@@ -42,5 +43,6 @@ router.use('/organizations', organizationRoutes);
 router.use('/portal', portalRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/recurring', recurringRoutes);
+router.use('/flow-rules', flowRulesRoutes);
 
 export const v1Routes = router;

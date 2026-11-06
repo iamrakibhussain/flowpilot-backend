@@ -233,6 +233,7 @@ model Organization {
   contracts              Contract[]
   recurringSchedules     RecurringSchedule[]
   retainerHourLogs       RetainerHourLog[]
+  flowRules              FlowRule[]
 
   @@map("organizations")
 }
@@ -968,4 +969,73 @@ model RetainerHourLog {
   @@unique([scheduleId, cycleStartDate])
   @@index([organizationId, scheduleId])
   @@map("retainer_hour_logs")
+}
+
+
+enum FlowRuleTrigger {
+  CONTRACT_SIGNED
+  QUOTE_ACCEPTED
+  INVOICE_PAID
+  INVOICE_OVERDUE
+  APPOINTMENT_BOOKED
+  APPOINTMENT_COMPLETED
+  PROJECT_STATUS_CHANGED
+}
+
+enum FlowRuleAction {
+  CREATE_PROJECT
+  CREATE_INVOICE
+  DRAFT_CONTRACT
+  SEND_EMAIL
+  CREATE_NOTIFICATION
+  UPDATE_CUSTOMER_STATUS
+}
+
+model FlowRule {
+  id             String          @id @default(uuid())
+  organizationId String          @map("organization_id")
+  title          String
+  description    String?
+  trigger        FlowRuleTrigger
+  action         FlowRuleAction
+  isActive       Boolean         @default(true) @map("is_active")
+
+  // Smart Configurable Parameters
+  conditionsJson   Json @default("{}") @map("conditions_json")
+  actionConfigJson Json @default("{}") @map("action_config_json")
+
+  lastTriggeredAt DateTime? @map("last_triggered_at")
+  executionCount  Int       @default(0) @map("execution_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  runs         FlowRuleExecution[]
+
+  @@index([organizationId, trigger, isActive])
+  @@map("flow_rules")
+}
+
+model FlowRuleExecution {
+  id             String @id @default(uuid())
+  ruleId         String @map("rule_id")
+  organizationId String @map("organization_id")
+
+  status              String   // "SUCCESS" | "FAILED" | "SKIPPED"
+  triggerEvent        String   @map("trigger_event")
+  entityId            String   @map("entity_id")
+  executionDurationMs Int      @map("execution_duration_ms")
+  errorMessage        String?  @map("error_message")
+  logsJson            Json?    @map("logs_json")
+
+  executedAt DateTime @default(now()) @map("executed_at")
+
+  // Relations
+  rule FlowRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([ruleId, executedAt])
+  @@index([organizationId, executedAt])
+  @@map("flow_rule_executions")
 }
