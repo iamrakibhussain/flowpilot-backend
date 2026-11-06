@@ -49,6 +49,17 @@ const baseEnvSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   EMAIL_FROM: z.string().default('FlowPilot Security <noreply@flowpilot.io>'),
+  EMAIL_PROVIDER: z
+    .enum(['auto', 'smtp', 'resend', 'sendgrid', 'postmark', 'test', 'console'])
+    .default('auto'),
+  RESEND_API_KEY: z.string().optional(),
+  SENDGRID_API_KEY: z.string().optional(),
+  POSTMARK_SERVER_TOKEN: z.string().optional(),
+  EMAIL_REPLY_TO: z.string().optional(),
+  SMTP_CONNECTION_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
+  SMTP_SOCKET_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
+  EMAIL_RETRY_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(5).default(3),
+  EMAIL_RETRY_INITIAL_DELAY_MS: z.coerce.number().int().positive().default(500),
   FRONTEND_URL: z.string().default('http://localhost:3000'),
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_PUBLISHABLE_KEY: z.string().optional(),

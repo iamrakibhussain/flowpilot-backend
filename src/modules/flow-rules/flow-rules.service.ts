@@ -560,11 +560,10 @@ export class FlowRulesService {
                   actionConfig.emailBodyTemplate ||
                   `Hello,\n\nWe have automatically processed the next step for "${payload.title}". Thank you for partnering with us!\n\nBest regards,\nYour Operations Team`;
 
-                await EmailService.sendMail({
+                await EmailService.sendFlowRuleCustomEmail({
                   to: customerEmail,
                   subject,
-                  text: body,
-                  html: `<p>${body.replace(/\n/g, '<br/>')}</p>`,
+                  body,
                 });
                 actionLogs.dispatchedToEmail = customerEmail;
               } else {

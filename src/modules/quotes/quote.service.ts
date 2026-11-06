@@ -679,42 +679,19 @@ export class QuoteService {
     // Dispatches notification email
     if (quote.customer.email) {
       try {
-        await EmailService.sendMail({
+        await EmailService.sendQuoteProposalEmail({
           to: quote.customer.email,
-          subject: `Estimate & Proposal ${quote.quoteNumber} from ${quote.organization.name}`,
-          text: `Hello ${quote.customer.name}, We have prepared a formal estimate for your review: "${quote.title}" (${quote.organization.currency} ${Number(quote.totalAmount).toFixed(2)}). Review and sign online: ${publicUrl}`,
-          html: `
-            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px;">
-              <div style="margin-bottom: 24px; border-bottom: 1px solid #e2e8f0; padding-bottom: 16px;">
-                <h1 style="color: #0f172a; font-size: 22px; margin: 0 0 8px 0;">${quote.organization.name}</h1>
-                <p style="color: #64748b; font-size: 14px; margin: 0;">Service Proposal: <strong>${quote.quoteNumber}</strong></p>
-              </div>
-              <p style="color: #334155; font-size: 15px; line-height: 1.6;">Hello <strong>${quote.customer.name}</strong>,</p>
-              <p style="color: #334155; font-size: 15px; line-height: 1.6;">
-                We have prepared a formal estimate for your review: <strong>"${quote.title}"</strong>.
-              </p>
-              <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin: 24px 0;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                  <span style="color: #64748b; font-size: 14px;">Total Estimated Investment:</span>
-                  <strong style="color: #0f172a; font-size: 18px;">${quote.organization.currency} ${Number(quote.totalAmount).toFixed(2)}</strong>
-                </div>
-                <div style="color: #64748b; font-size: 13px;">
-                  Valid until: ${new Date(tokenExpiry).toLocaleDateString()}
-                </div>
-              </div>
-              <div style="text-align: center; margin: 32px 0;">
-                <a href="${publicUrl}" style="background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 600; font-size: 15px; display: inline-block;">
-                  Review & Digitally Sign Proposal
-                </a>
-              </div>
-              <p style="color: #94a3b8; font-size: 12px; text-align: center; margin-top: 32px;">
-                You can review deliverables, request modifications, or accept online with a single click.
-              </p>
-            </div>
-          `,
+          customerName: quote.customer.name,
+          quoteTitle: quote.title,
+          quoteNumber: quote.quoteNumber,
+          totalAmount: Number(quote.totalAmount),
+          currency: quote.organization.currency,
+          validUntil: tokenExpiry,
+          reviewUrl: publicUrl,
+          organizationName: quote.organization.name,
         });
       } catch {
-        // Continue even if SMTP transport is mock/disabled
+        // Continue even if email dispatch encounters an issue
       }
     }
 
