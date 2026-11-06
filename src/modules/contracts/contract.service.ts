@@ -295,27 +295,14 @@ export class ContractService {
 
     // Dispatch branded email notification to customer
     if (contract.customer.email?.includes('@')) {
-      EmailService.sendMail({
+      EmailService.sendContractSigningEmail({
         to: contract.customer.email,
-        subject: `Document for Signature: ${contract.title} (${contract.contractNumber})`,
-        text: `Hello ${contract.customer.name}, A new document ${contract.title} (${contract.contractNumber}) is ready for your signature: ${signingUrl}`,
-        html: `
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
-            <div style="background-color: ${contract.organization.brandColor || '#2563eb'}; padding: 16px 24px; border-radius: 8px 8px 0 0; color: white;">
-              <h2 style="margin: 0; font-size: 20px;">${contract.organization.name}</h2>
-            </div>
-            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-top: none; padding: 24px; border-radius: 0 0 8px 8px;">
-              <p style="font-size: 15px; color: #334155;">Hello <strong>${contract.customer.name}</strong>,</p>
-              <p style="font-size: 15px; color: #334155;">A new document <strong>${contract.title}</strong> (${contract.contractNumber}) is ready for your electronic review and signature.</p>
-              <div style="margin: 28px 0; text-align: center;">
-                <a href="${signingUrl}" style="background-color: ${contract.organization.brandColor || '#2563eb'}; color: white; padding: 12px 28px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block;">
-                  Review & Sign Document →
-                </a>
-              </div>
-              <p style="font-size: 12px; color: #64748b;">This secure link expires in 30 days. If you have questions, contact ${contract.organization.name} directly.</p>
-            </div>
-          </div>
-        `,
+        customerName: contract.customer.name,
+        contractTitle: contract.title,
+        contractNumber: contract.contractNumber,
+        signingUrl,
+        organizationName: contract.organization.name,
+        brandColor: contract.organization.brandColor || undefined,
       }).catch((err) => {
         logger.error({ err }, 'Failed to dispatch contract signing email');
       });

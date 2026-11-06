@@ -1,18 +1,42 @@
-import nodemailer from 'nodemailer';
-import type { Transporter } from 'nodemailer';
 import { env } from '../../config/env.js';
 import { logger } from '../logging/logger.js';
+import { EmailProviderFactory } from './email-provider.factory.js';
+import type { EmailMessage } from './email.types.js';
+import { EmailDeliveryError } from './email.types.js';
 
 export interface SendMailOptions {
   to: string;
   subject: string;
   html: string;
   text: string;
+  from?: string;
+  replyTo?: string;
+  cc?: string | string[];
+  bcc?: string | string[];
   attachments?: Array<{
     filename: string;
     content: string | Buffer;
     contentType?: string;
   }>;
+  headers?: Record<string, string>;
+  correlationId?: string;
+  tags?: Record<string, string>;
+}
+
+export interface EmailTelemetry {
+  totalAttempted: number;
+  totalDelivered: number;
+  totalFailed: number;
+  transientRetries: number;
+  byProvider: Record<string, { delivered: number; failed: number }>;
+}
+
+export interface SendMailResult {
+  success: boolean;
+  messageId?: string;
+  provider?: string;
+  attempts?: number;
+  error?: string;
 }
 
 /**
@@ -30,121 +54,251 @@ export function escapeHtml(str: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * Validates email address format strictly according to standard RFC-compliant patterns.
+ */
+export function isValidEmail(email: string): boolean {
+  if (!email || typeof email !== 'string') return false;
+  const emailRegex =
+    /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+  return emailRegex.test(email.trim());
+}
+
+/**
+ * Detects presence of CRLF line breaks to block header injection vectors.
+ */
+export function hasCrlf(str: string): boolean {
+  return /[\r\n]/.test(str);
+}
+
 export class EmailService {
-  private static transporter: Transporter | null = null;
+  private static telemetry: EmailTelemetry = {
+    totalAttempted: 0,
+    totalDelivered: 0,
+    totalFailed: 0,
+    transientRetries: 0,
+    byProvider: {},
+  };
 
-  private static getTransporter(): Transporter | null {
-    if (this.transporter) {
-      return this.transporter;
-    }
-
-    if (!env.SMTP_USER || !env.SMTP_PASS) {
-      return null;
-    }
-
-    const cleanPass = env.SMTP_PASS.replace(/\s+/g, '');
-    const isGmail = env.SMTP_HOST.toLowerCase().includes('gmail.com');
-
-    if (isGmail) {
-      this.transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: env.SMTP_USER,
-          pass: cleanPass,
-        },
-      });
-    } else {
-      this.transporter = nodemailer.createTransport({
-        host: env.SMTP_HOST,
-        port: env.SMTP_PORT,
-        secure: env.SMTP_SECURE,
-        auth: {
-          user: env.SMTP_USER,
-          pass: cleanPass,
-        },
-        tls: {
-          rejectUnauthorized: env.NODE_ENV === 'production',
-        },
-      });
-    }
-
-    return this.transporter;
+  /**
+   * Retrieves read-only copy of operational email telemetry counters.
+   */
+  public static getTelemetry(): EmailTelemetry {
+    return {
+      ...this.telemetry,
+      byProvider: Object.fromEntries(
+        Object.entries(this.telemetry.byProvider).map(([k, v]) => [k, { ...v }]),
+      ),
+    };
   }
 
-  public static async sendMail(
-    options: SendMailOptions,
-  ): Promise<{ success: boolean; messageId?: string }> {
-    // Defense-in-depth: Prevent CRLF header injection in recipient, subject, or attachment filenames
+  /**
+   * Resets telemetry metrics (primarily for deterministic unit/integration testing).
+   */
+  public static resetTelemetry(): void {
+    this.telemetry = {
+      totalAttempted: 0,
+      totalDelivered: 0,
+      totalFailed: 0,
+      transientRetries: 0,
+      byProvider: {},
+    };
+  }
+
+  /**
+   * Proactively verifies transport connection to configured email provider.
+   */
+  public static async verifyTransport(): Promise<{
+    success: boolean;
+    provider: string;
+    error?: string;
+    latencyMs?: number;
+  }> {
+    const provider = EmailProviderFactory.getProvider();
+    if (!provider.verifyConnection) {
+      return { success: true, provider: provider.name };
+    }
+    try {
+      const res = await provider.verifyConnection();
+      return {
+        success: res.ok,
+        provider: provider.name,
+        error: res.error,
+        latencyMs: res.latencyMs,
+      };
+    } catch (err: unknown) {
+      return {
+        success: false,
+        provider: provider.name,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  /**
+   * Dispatches transactional email with CRLF injection checks, recipient validation,
+   * exponential backoff retry for transient failures, and telemetry collection.
+   */
+  public static async sendMail(options: SendMailOptions): Promise<SendMailResult> {
+    this.telemetry.totalAttempted++;
+
+    // 1. CRLF header injection defense across all headers & attachment names
     if (
-      /[\r\n]/.test(options.to) ||
-      /[\r\n]/.test(options.subject) ||
-      Boolean(options.attachments?.some((a) => /[\r\n]/.test(a.filename)))
+      hasCrlf(options.to) ||
+      hasCrlf(options.subject) ||
+      (options.from && hasCrlf(options.from)) ||
+      (options.replyTo && hasCrlf(options.replyTo)) ||
+      Boolean(options.attachments?.some((a) => hasCrlf(a.filename)))
     ) {
+      this.telemetry.totalFailed++;
       logger.error(
         { event: 'email.crlf_detected', to: options.to },
         'Potential CRLF header injection detected in email dispatch. Aborting.',
       );
-      return { success: false };
+      return { success: false, error: 'CRLF injection detected' };
     }
 
-    const transporter = this.getTransporter();
-
-    // In local dev/test or when Gmail App Password is not yet set, simulate delivery safely
-    if (!transporter) {
-      logger.info(
-        {
-          event: 'email.simulated',
-          to: options.to,
-          subject: options.subject,
-        },
-        'SMTP credentials not set in .env. Email simulated in console.',
+    // 2. Strict recipient email validation
+    if (!isValidEmail(options.to)) {
+      this.telemetry.totalFailed++;
+      logger.warn(
+        { event: 'email.invalid_recipient', to: options.to },
+        'Attempted to send email to an invalid email address format. Aborting.',
       );
-      return { success: true, messageId: 'simulated-dev-id' };
+      return { success: false, error: 'Invalid recipient email address' };
     }
 
-    try {
-      const fromHeader = env.EMAIL_FROM.includes('<')
-        ? env.EMAIL_FROM
-        : `"FlowPilot Security" <${env.SMTP_USER || env.EMAIL_FROM}>`;
+    const provider = EmailProviderFactory.getProvider();
+    const providerName = provider.name;
+    if (!this.telemetry.byProvider[providerName]) {
+      this.telemetry.byProvider[providerName] = { delivered: 0, failed: 0 };
+    }
 
-      const info = await transporter.sendMail({
-        from: fromHeader,
-        replyTo: env.SMTP_USER || fromHeader,
+    const maxAttempts = env.EMAIL_RETRY_MAX_ATTEMPTS || 3;
+    const initialDelayMs = env.EMAIL_RETRY_INITIAL_DELAY_MS || 500;
+
+    const emailMessage: EmailMessage = {
+      to: options.to.trim(),
+      subject: options.subject,
+      text: options.text,
+      html: options.html,
+      from: options.from || env.EMAIL_FROM,
+      replyTo: options.replyTo || env.EMAIL_REPLY_TO || env.SMTP_USER || undefined,
+      cc: options.cc,
+      bcc: options.bcc,
+      attachments: options.attachments,
+      headers: {
+        'X-Priority': '1',
+        'X-MSMail-Priority': 'High',
+        Importance: 'high',
+        ...options.headers,
+      },
+      correlationId: options.correlationId,
+      tags: options.tags,
+    };
+
+    let attempt = 0;
+    let lastError: unknown = null;
+
+    while (attempt < maxAttempts) {
+      attempt++;
+      try {
+        const result = await provider.send(emailMessage);
+        if (result.success) {
+          this.telemetry.totalDelivered++;
+          this.telemetry.byProvider[providerName].delivered++;
+          logger.info(
+            {
+              event: 'email.sent',
+              provider: providerName,
+              to: options.to,
+              subject: options.subject,
+              messageId: result.messageId,
+              attempts: attempt,
+            },
+            'Transactional email delivered successfully',
+          );
+          return {
+            success: true,
+            messageId: result.messageId,
+            provider: providerName,
+            attempts: attempt,
+          };
+        } else {
+          throw new EmailDeliveryError(
+            result.error || 'Provider returned unsuccessful status',
+            'PERMANENT',
+          );
+        }
+      } catch (err: unknown) {
+        lastError = err;
+        const isTransient =
+          err instanceof EmailDeliveryError ? err.isRetryable : this.isTransientError(err);
+
+        if (isTransient && attempt < maxAttempts) {
+          this.telemetry.transientRetries++;
+          const jitter = Math.random() * 100;
+          const delay = initialDelayMs * Math.pow(2, attempt - 1) + jitter;
+          logger.warn(
+            {
+              event: 'email.retry',
+              provider: providerName,
+              to: options.to,
+              attempt,
+              maxAttempts,
+              delayMs: Math.round(delay),
+              err: err instanceof Error ? err.message : String(err),
+            },
+            `Transient email failure on attempt ${attempt}/${maxAttempts}. Retrying in ${Math.round(delay)}ms...`,
+          );
+          await new Promise((res) => setTimeout(res, delay));
+          continue;
+        }
+
+        // Permanent error or max attempts reached
+        break;
+      }
+    }
+
+    this.telemetry.totalFailed++;
+    this.telemetry.byProvider[providerName].failed++;
+    const errMsg = lastError instanceof Error ? lastError.message : String(lastError);
+    logger.error(
+      {
+        event: 'email.error',
+        provider: providerName,
         to: options.to,
         subject: options.subject,
-        text: options.text,
-        html: options.html,
-        attachments: options.attachments,
-        headers: {
-          'X-Priority': '1',
-          'X-MSMail-Priority': 'High',
-          Importance: 'high',
-        },
-      });
+        attempts: attempt,
+        err: errMsg,
+      },
+      'Failed to deliver transactional email after attempts exhausted or non-retryable error',
+    );
 
-      logger.info(
-        {
-          event: 'email.sent',
-          to: options.to,
-          subject: options.subject,
-          messageId: info.messageId,
-        },
-        'Transactional email delivered successfully',
-      );
+    return {
+      success: false,
+      provider: providerName,
+      attempts: attempt,
+      error: errMsg,
+    };
+  }
 
-      return { success: true, messageId: info.messageId };
-    } catch (error) {
-      logger.error(
-        {
-          event: 'email.error',
-          to: options.to,
-          subject: options.subject,
-          err: error instanceof Error ? error.message : 'Unknown SMTP error',
-        },
-        'Failed to deliver transactional email',
-      );
-      return { success: false };
+  private static isTransientError(err: unknown): boolean {
+    if (err instanceof EmailDeliveryError) {
+      return err.isRetryable;
     }
+    const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+    return (
+      msg.includes('timeout') ||
+      msg.includes('etimedout') ||
+      msg.includes('econnreset') ||
+      msg.includes('econnrefused') ||
+      msg.includes('rate limit') ||
+      msg.includes('429') ||
+      msg.includes('503') ||
+      msg.includes('502') ||
+      msg.includes('504')
+    );
   }
 
   /**
@@ -662,9 +816,11 @@ export class EmailService {
     const safeUser = escapeHtml(userName);
     const safeOrg = escapeHtml(orgName);
     const timestamp = new Date().toUTCString();
+    const activeProvider = EmailProviderFactory.getProvider();
+    const providerLabel = activeProvider.name.toUpperCase();
     const subject = `[Test] FlowPilot Email Service Connected - ${safeOrg}`;
 
-    const text = `Hello ${userName},\n\nThis is a test email dispatched from your FlowPilot workspace "${orgName}" to verify SMTP connectivity.\n\nTimestamp: ${timestamp}\nStatus: Active and operational.\n\n— The FlowPilot Automated System`;
+    const text = `Hello ${userName},\n\nThis is a test email dispatched from your FlowPilot workspace "${orgName}" to verify email connectivity.\n\nTimestamp: ${timestamp}\nProvider: ${providerLabel}\nStatus: Active and operational.\n\n— The FlowPilot Automated System`;
 
     const html = `
 <!DOCTYPE html>
@@ -691,7 +847,7 @@ export class EmailService {
               </p>
               <div style="background-color: #f1f5f9; border-radius: 8px; padding: 16px; margin: 0 0 24px 0; font-size: 13px; color: #475569; font-family: monospace;">
                 <strong>Timestamp:</strong> ${timestamp}<br>
-                <strong>Provider:</strong> ${env.SMTP_HOST} (Port ${env.SMTP_PORT})<br>
+                <strong>Provider:</strong> ${providerLabel}<br>
                 <strong>Status:</strong> Active &amp; Ready
               </div>
               <p style="margin: 0; font-size: 12px; color: #64748b; line-height: 1.5;">
@@ -1376,6 +1532,278 @@ export class EmailService {
     `;
 
     const result = await this.sendMail({ to: options.to, subject, text, html });
+    return result.success;
+  }
+
+  /**
+   * Dispatches branded contract signing invitation email with electronic signature link.
+   */
+  public static async sendContractSigningEmail(options: {
+    to: string;
+    customerName: string;
+    contractTitle: string;
+    contractNumber: string;
+    signingUrl: string;
+    organizationName: string;
+    brandColor?: string;
+  }): Promise<boolean> {
+    const safeCustomer = escapeHtml(options.customerName);
+    const safeTitle = escapeHtml(options.contractTitle);
+    const safeContractNumber = escapeHtml(options.contractNumber);
+    const safeOrg = escapeHtml(options.organizationName);
+    const brandColor = options.brandColor || '#2563eb';
+
+    const subject = `Document for Signature: ${options.contractTitle} (${options.contractNumber})`;
+    const text = `Hello ${options.customerName},\n\nA new document "${options.contractTitle}" (${options.contractNumber}) from ${options.organizationName} is ready for your electronic review and signature.\n\nReview & Sign Document:\n${options.signingUrl}\n\nThis secure link expires in 30 days. If you have questions, contact ${options.organizationName} directly.\n\n— The ${options.organizationName} Team`;
+
+    const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
+  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 560px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+          <tr>
+            <td style="padding: 24px 32px; background-color: ${brandColor}; color: #ffffff;">
+              <span style="display: inline-block; padding: 3px 8px; border-radius: 4px; background-color: rgba(255,255,255,0.2); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
+                SIGNATURE REQUEST
+              </span>
+              <h2 style="margin: 0; font-size: 20px; font-weight: 700;">${safeOrg}</h2>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 32px;">
+              <p style="margin: 0 0 16px 0; font-size: 14px; color: #334155;">Hello <strong>${safeCustomer}</strong>,</p>
+              <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.6; color: #475569;">
+                A new agreement <strong>"${safeTitle}"</strong> is ready for your electronic review and signature.
+              </p>
+
+              <!-- Agreement Details Box -->
+              <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                <table width="100%" border="0" cellspacing="0" cellpadding="4" style="font-size: 13px;">
+                  <tr>
+                    <td style="color: #64748b;">Document Title:</td>
+                    <td align="right" style="font-weight: 700; color: #1e293b;">${safeTitle}</td>
+                  </tr>
+                  <tr>
+                    <td style="color: #64748b;">Contract Number:</td>
+                    <td align="right" style="font-weight: 700; color: #1e293b;">#${safeContractNumber}</td>
+                  </tr>
+                  <tr>
+                    <td style="color: #64748b;">Security:</td>
+                    <td align="right" style="font-weight: 600; color: #10b981;">Encrypted &amp; Audit-Logged</td>
+                  </tr>
+                </table>
+              </div>
+
+              <div style="text-align: center; margin: 28px 0;">
+                <a href="${options.signingUrl}" style="background-color: ${brandColor}; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 14px; padding: 14px 36px; border-radius: 8px; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                  Review &amp; Sign Document &rarr;
+                </a>
+              </div>
+
+              <p style="margin: 0; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+                This secure electronic link is valid for 30 days. If you have questions or require revisions, contact ${safeOrg} directly.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 16px 32px; background-color: #f8fafc; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
+              &copy; 2026 ${safeOrg}. Powered by FlowPilot e-Signatures.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+    `;
+
+    const result = await this.sendMail({
+      to: options.to,
+      subject,
+      text,
+      html,
+    });
+    return result.success;
+  }
+
+  /**
+   * Dispatches branded quote & service proposal notification email with review link.
+   */
+  public static async sendQuoteProposalEmail(options: {
+    to: string;
+    customerName: string;
+    quoteTitle: string;
+    quoteNumber: string;
+    totalAmount: string | number | { toString(): string };
+    currency: string;
+    validUntil?: Date | string;
+    reviewUrl: string;
+    organizationName: string;
+    brandColor?: string;
+  }): Promise<boolean> {
+    const safeCustomer = escapeHtml(options.customerName);
+    const safeTitle = escapeHtml(options.quoteTitle);
+    const safeQuoteNumber = escapeHtml(options.quoteNumber);
+    const safeOrg = escapeHtml(options.organizationName);
+    const brandColor = options.brandColor || '#2563eb';
+    const formattedAmount = `${options.currency} ${Number(options.totalAmount).toFixed(2)}`;
+    const formattedExpiry = options.validUntil
+      ? new Date(options.validUntil).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        })
+      : 'Open until accepted';
+
+    const subject = `Estimate & Proposal ${options.quoteNumber} from ${options.organizationName}`;
+    const text = `Hello ${options.customerName},\n\nWe have prepared a formal estimate for your review: "${options.quoteTitle}" (${formattedAmount}).\nValid until: ${formattedExpiry}\n\nReview and sign online:\n${options.reviewUrl}\n\nThank you for choosing ${options.organizationName}!\n\n— The ${options.organizationName} Team`;
+
+    const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
+  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 560px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+          <tr>
+            <td style="padding: 24px 32px; background-color: ${brandColor}; color: #ffffff;">
+              <span style="display: inline-block; padding: 3px 8px; border-radius: 4px; background-color: rgba(255,255,255,0.2); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
+                SERVICE PROPOSAL
+              </span>
+              <h2 style="margin: 0; font-size: 20px; font-weight: 700;">Proposal #${safeQuoteNumber}</h2>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 32px;">
+              <p style="margin: 0 0 16px 0; font-size: 14px; color: #334155;">Hello <strong>${safeCustomer}</strong>,</p>
+              <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.6; color: #475569;">
+                We have prepared a formal estimate for your review: <strong>"${safeTitle}"</strong>.
+              </p>
+
+              <!-- Proposal Box -->
+              <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                <table width="100%" border="0" cellspacing="0" cellpadding="4" style="font-size: 13px;">
+                  <tr>
+                    <td style="color: #64748b;">Proposal Title:</td>
+                    <td align="right" style="font-weight: 700; color: #1e293b;">${safeTitle}</td>
+                  </tr>
+                  <tr>
+                    <td style="color: #64748b;">Valid Until:</td>
+                    <td align="right" style="font-weight: 600; color: #1e293b;">${formattedExpiry}</td>
+                  </tr>
+                  <tr>
+                    <td style="color: #64748b; font-size: 14px; padding-top: 8px;">Total Investment:</td>
+                    <td align="right" style="font-weight: 800; color: #0f172a; font-size: 16px; padding-top: 8px;">${formattedAmount}</td>
+                  </tr>
+                </table>
+              </div>
+
+              <div style="text-align: center; margin: 28px 0;">
+                <a href="${options.reviewUrl}" style="background-color: ${brandColor}; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 14px; padding: 14px 36px; border-radius: 8px; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                  Review &amp; Digitally Sign Proposal &rarr;
+                </a>
+              </div>
+
+              <p style="margin: 0; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+                You can review deliverables, request modifications, or accept online with a single click.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 16px 32px; background-color: #f8fafc; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
+              &copy; 2026 ${safeOrg}. Powered by FlowPilot Quotes.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+    `;
+
+    const result = await this.sendMail({
+      to: options.to,
+      subject,
+      text,
+      html,
+    });
+    return result.success;
+  }
+
+  /**
+   * Dispatches automated FlowRule customer notification email with secure HTML escaping.
+   */
+  public static async sendFlowRuleCustomEmail(options: {
+    to: string;
+    subject: string;
+    body: string;
+    organizationName?: string;
+    brandColor?: string;
+  }): Promise<boolean> {
+    const orgName = options.organizationName || 'FlowPilot';
+    const safeOrg = escapeHtml(orgName);
+    const safeBody = escapeHtml(options.body).replace(/\n/g, '<br/>');
+    const brandColor = options.brandColor || '#2563eb';
+
+    const text = `${options.body}\n\n— Sent via ${orgName} Automation`;
+
+    const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${escapeHtml(options.subject)}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
+  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 560px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+          <tr>
+            <td style="padding: 20px 32px; background-color: ${brandColor}; color: #ffffff;">
+              <h2 style="margin: 0; font-size: 18px; font-weight: 700;">${safeOrg}</h2>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 32px;">
+              <div style="font-size: 14px; line-height: 1.6; color: #334155;">
+                ${safeBody}
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 16px 32px; background-color: #f8fafc; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8;">
+              &copy; 2026 ${safeOrg}. Automated notification powered by FlowPilot.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+    `;
+
+    const result = await this.sendMail({
+      to: options.to,
+      subject: options.subject,
+      text,
+      html,
+    });
     return result.success;
   }
 }
