@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { prisma } from '../../database/prisma.js';
-import { NotFoundError, BadRequestError } from '../../common/errors/app-error.js';
+import { NotFoundError, BadRequestError, ForbiddenError } from '../../common/errors/app-error.js';
 import { Role } from '@prisma/client';
 import { EmailService } from '../../common/email/email.service.js';
 import { generateSessionToken, hashSessionToken, hashPassword } from '../auth/crypto.js';
@@ -113,7 +113,12 @@ export class TeamService {
     organizationId: string,
     inviterUserId: string,
     input: SendInvitationInput,
+    inviterRole: Role,
   ): Promise<TeamInvitationItem> {
+    if (!inviterRole || !Object.values(Role).includes(inviterRole)) {
+      throw new ForbiddenError('Caller organization role is missing or invalid');
+    }
+
     const email = input.email.trim().toLowerCase();
 
     if (!email || !EMAIL_REGEX.test(email)) {
@@ -122,6 +127,11 @@ export class TeamService {
 
     if (!input.role || !Object.values(Role).includes(input.role)) {
       throw new BadRequestError('Valid workspace role is required');
+    }
+
+    // Security (Fail-Closed): Only an explicitly authenticated OWNER can invite a new OWNER
+    if (input.role === Role.OWNER && inviterRole !== Role.OWNER) {
+      throw new ForbiddenError('Only workspace Owners can invite new Owners');
     }
 
     // 1. Check if user with this email is already an active member of this organization
@@ -262,129 +272,220 @@ export class TeamService {
 
   public static async updateMemberRole(
     organizationId: string,
-    _currentUserId: string,
+    currentUserId: string,
     targetMembershipId: string,
     newRole: Role,
+    currentUserRole: Role,
   ): Promise<TeamMemberItem> {
-    const targetMembership = await prisma.membership.findFirst({
-      where: {
-        id: targetMembershipId,
-        organizationId,
-      },
-      include: {
-        user: true,
-      },
-    });
-
-    if (!targetMembership) {
-      throw new NotFoundError('Team membership not found in this organization');
+    if (!currentUserRole || !Object.values(Role).includes(currentUserRole)) {
+      throw new ForbiddenError('Caller organization role is missing or invalid');
     }
 
-    // Safety: If demoting an OWNER, ensure at least one other OWNER exists
-    if (targetMembership.role === Role.OWNER && newRole !== Role.OWNER) {
-      const ownerCount = await prisma.membership.count({
+    if (!newRole || !Object.values(Role).includes(newRole)) {
+      throw new BadRequestError('Valid target role is required');
+    }
+
+    // Fast fail-closed: Only an explicitly authenticated OWNER can promote someone to OWNER
+    if (newRole === Role.OWNER && currentUserRole !== Role.OWNER) {
+      throw new ForbiddenError(
+        'Only workspace Owners can modify an Owner account or promote a member to Owner',
+      );
+    }
+
+    return prisma.$transaction(async (tx) => {
+      // 1. Acquire organization-scoped advisory transaction lock
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('flowpilot_owner_lock_' || ${organizationId}::text, 0::bigint))`;
+
+      // 2. Revalidate caller's CURRENT membership and role inside the locked transaction
+      const callerMembership = await tx.membership.findFirst({
         where: {
           organizationId,
-          role: Role.OWNER,
+          userId: currentUserId,
         },
       });
 
-      if (ownerCount <= 1) {
-        throw new BadRequestError(
-          'Cannot demote the only organization Owner. Promote another team member first.',
+      if (!callerMembership) {
+        throw new ForbiddenError('Caller is not an active member of this workspace');
+      }
+
+      const activeCallerRole = callerMembership.role;
+
+      // 3. Re-read the target membership inside the locked transaction
+      const targetMembership = await tx.membership.findFirst({
+        where: {
+          id: targetMembershipId,
+          organizationId,
+        },
+        include: {
+          user: true,
+        },
+      });
+
+      if (!targetMembership) {
+        throw new NotFoundError('Team membership not found in this organization');
+      }
+
+      // 4. Security (Fail-Closed): Only an active OWNER can promote someone to OWNER or demote/modify an OWNER's role
+      if (targetMembership.role === Role.OWNER || newRole === Role.OWNER) {
+        if (activeCallerRole !== Role.OWNER) {
+          throw new ForbiddenError(
+            'Only workspace Owners can modify an Owner account or promote a member to Owner',
+          );
+        }
+      }
+
+      // Ensure caller has at least ADMIN or OWNER role for any membership update
+      if (activeCallerRole !== Role.OWNER && activeCallerRole !== Role.ADMIN) {
+        throw new ForbiddenError(
+          'Caller is not authorized to manage team members in this workspace',
         );
       }
-    }
 
-    const updated = await prisma.membership.update({
-      where: { id: targetMembershipId },
-      data: { role: newRole },
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-      },
+      // 5. Safety: If demoting an OWNER, ensure at least one other OWNER exists
+      if (targetMembership.role === Role.OWNER && newRole !== Role.OWNER) {
+        const ownerCount = await tx.membership.count({
+          where: {
+            organizationId,
+            role: Role.OWNER,
+          },
+        });
+
+        if (ownerCount <= 1) {
+          throw new BadRequestError(
+            'Cannot demote the only organization Owner. Promote another team member first.',
+          );
+        }
+      }
+
+      // 5. Update role inside locked transaction
+      const updated = await tx.membership.update({
+        where: { id: targetMembershipId },
+        data: { role: newRole },
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+        },
+      });
+
+      const staffProfile = await tx.staffMember.findFirst({
+        where: { organizationId, userId: updated.userId },
+        select: {
+          id: true,
+          roleTitle: true,
+          avatarBg: true,
+          initials: true,
+          status: true,
+          shiftStart: true,
+          shiftEnd: true,
+        },
+      });
+
+      return {
+        id: updated.id,
+        userId: updated.userId,
+        name: updated.user.name,
+        email: updated.user.email,
+        role: updated.role,
+        joinedAt: updated.createdAt.toISOString(),
+        staffProfile: staffProfile
+          ? {
+              id: staffProfile.id,
+              roleTitle: staffProfile.roleTitle,
+              avatarBg: staffProfile.avatarBg,
+              initials: staffProfile.initials,
+              status: staffProfile.status,
+              shiftStart: staffProfile.shiftStart,
+              shiftEnd: staffProfile.shiftEnd,
+            }
+          : null,
+      };
     });
-
-    const staffProfile = await prisma.staffMember.findFirst({
-      where: { organizationId, userId: updated.userId },
-      select: {
-        id: true,
-        roleTitle: true,
-        avatarBg: true,
-        initials: true,
-        status: true,
-        shiftStart: true,
-        shiftEnd: true,
-      },
-    });
-
-    return {
-      id: updated.id,
-      userId: updated.userId,
-      name: updated.user.name,
-      email: updated.user.email,
-      role: updated.role,
-      joinedAt: updated.createdAt.toISOString(),
-      staffProfile: staffProfile
-        ? {
-            id: staffProfile.id,
-            roleTitle: staffProfile.roleTitle,
-            avatarBg: staffProfile.avatarBg,
-            initials: staffProfile.initials,
-            status: staffProfile.status,
-            shiftStart: staffProfile.shiftStart,
-            shiftEnd: staffProfile.shiftEnd,
-          }
-        : null,
-    };
   }
 
   public static async removeMember(
     organizationId: string,
     currentUserId: string,
     targetMembershipId: string,
+    currentUserRole: Role,
   ): Promise<{ success: boolean }> {
-    const target = await prisma.membership.findFirst({
-      where: {
-        id: targetMembershipId,
-        organizationId,
-      },
-    });
-
-    if (!target) {
-      throw new NotFoundError('Team membership not found in this organization');
+    if (!currentUserRole || !Object.values(Role).includes(currentUserRole)) {
+      throw new ForbiddenError('Caller organization role is missing or invalid');
     }
 
-    if (target.userId === currentUserId) {
-      throw new BadRequestError('You cannot remove yourself from the workspace.');
-    }
+    return prisma.$transaction(async (tx) => {
+      // 1. Acquire organization-scoped advisory transaction lock
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('flowpilot_owner_lock_' || ${organizationId}::text, 0::bigint))`;
 
-    // Prevent removing the sole OWNER
-    if (target.role === Role.OWNER) {
-      const ownerCount = await prisma.membership.count({
+      // 2. Revalidate caller's CURRENT membership and role inside the locked transaction
+      const callerMembership = await tx.membership.findFirst({
         where: {
           organizationId,
-          role: Role.OWNER,
+          userId: currentUserId,
         },
       });
-      if (ownerCount <= 1) {
-        throw new BadRequestError('Cannot remove the primary Owner from the workspace.');
-      }
-    }
 
-    await prisma.$transaction(async (tx) => {
-      // Unlink any associated staff member record
+      if (!callerMembership) {
+        throw new ForbiddenError('Caller is not an active member of this workspace');
+      }
+
+      const activeCallerRole = callerMembership.role;
+
+      // 3. Re-read target membership inside locked transaction
+      const target = await tx.membership.findFirst({
+        where: {
+          id: targetMembershipId,
+          organizationId,
+        },
+      });
+
+      if (!target) {
+        throw new NotFoundError('Team membership not found in this organization');
+      }
+
+      // Self-removal protection
+      if (target.userId === currentUserId) {
+        throw new BadRequestError('You cannot remove yourself from the workspace.');
+      }
+
+      // 4. Security (Fail-Closed): Only an active OWNER can remove an OWNER from the workspace
+      if (target.role === Role.OWNER) {
+        if (activeCallerRole !== Role.OWNER) {
+          throw new ForbiddenError('Only workspace Owners can remove an Owner from the workspace');
+        }
+      }
+
+      // Ensure caller has at least ADMIN or OWNER role for member removal
+      if (activeCallerRole !== Role.OWNER && activeCallerRole !== Role.ADMIN) {
+        throw new ForbiddenError(
+          'Caller is not authorized to manage team members in this workspace',
+        );
+      }
+
+      // 5. Prevent removing the sole OWNER inside locked transaction
+      if (target.role === Role.OWNER) {
+        const ownerCount = await tx.membership.count({
+          where: {
+            organizationId,
+            role: Role.OWNER,
+          },
+        });
+        if (ownerCount <= 1) {
+          throw new BadRequestError('Cannot remove the primary Owner from the workspace.');
+        }
+      }
+
+      // 5. Unlink any associated staff member record
       await tx.staffMember.updateMany({
         where: { organizationId, userId: target.userId },
         data: { userId: null },
       });
 
-      // Delete membership
+      // 6. Delete membership
       await tx.membership.delete({
         where: { id: targetMembershipId },
       });
-    });
 
-    return { success: true };
+      return { success: true };
+    });
   }
 
   public static async verifyInvitationToken(token: string): Promise<VerifyInvitationResult> {

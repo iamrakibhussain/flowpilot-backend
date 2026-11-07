@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { PaymentService } from './payment.service.js';
 import { sendSuccess } from '../../common/http/response.js';
-import { BadRequestError } from '../../common/errors/app-error.js';
+import { BadRequestError, ForbiddenError } from '../../common/errors/app-error.js';
 import { TransactionStatus } from '@prisma/client';
 import { ListTransactionsQuery, UpdatePaymentSettingsInput } from './payment.types.js';
 
@@ -147,6 +147,12 @@ export class PaymentController {
   ): Promise<void> {
     try {
       const organizationId = req.tenant!.organizationId;
+      const userRole = req.tenant!.role;
+
+      if (userRole !== 'OWNER' && userRole !== 'ADMIN') {
+        throw new ForbiddenError('Only workspace Owners and Admins can update payment settings');
+      }
+
       const input: UpdatePaymentSettingsInput = req.body || {};
       const settings = await PaymentService.updatePaymentSettings(organizationId, input);
       sendSuccess(res, settings, 200, 'Payment settings successfully updated');

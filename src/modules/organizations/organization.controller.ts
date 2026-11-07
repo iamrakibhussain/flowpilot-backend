@@ -55,6 +55,15 @@ export class OrganizationController {
   public static async getAuditLogs(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const organizationId = req.tenant!.organizationId;
+      const userRole = req.tenant!.role;
+
+      // Only OWNER and ADMIN are permitted to access organization security audit logs
+      if (userRole !== Role.OWNER && userRole !== Role.ADMIN) {
+        throw new ForbiddenError(
+          'Only workspace Owners and Admins can access organization audit logs',
+        );
+      }
+
       const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
       const logs = await OrganizationSettingsService.getAuditLogs(organizationId, limit);
       sendSuccess(res, logs);

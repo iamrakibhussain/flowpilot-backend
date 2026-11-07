@@ -35,6 +35,18 @@ export function tenantContextMiddleware(options: TenantContextOptions = {}) {
 
     const organizationId = orgIdHeader.trim();
 
+    // Fast-path: If tenant context was already validated upstream for the same organization
+    if (req.tenant?.organizationId === organizationId && req.tenant?.role) {
+      if (options.allowedRoles && options.allowedRoles.length > 0) {
+        if (!options.allowedRoles.includes(req.tenant.role)) {
+          return next(
+            new ForbiddenError('Insufficient organization permissions for this operation'),
+          );
+        }
+      }
+      return next();
+    }
+
     // If endpoint requires server-side membership authorization (enabled by default):
     if (requireVerification) {
       if (!req.user || !req.user.id) {
@@ -107,6 +119,22 @@ export function tenantContextMiddleware(options: TenantContextOptions = {}) {
       role: undefined,
     };
 
+    next();
+  };
+}
+
+/**
+ * Lightweight role verification middleware for routes already protected by tenantContextMiddleware.
+ */
+export function requireRoles(allowedRoles: UserRole[]) {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    const role = req.tenant?.role;
+    if (!role) {
+      return next(new ForbiddenError('Tenant authorization context required'));
+    }
+    if (!allowedRoles.includes(role)) {
+      return next(new ForbiddenError('Insufficient organization permissions for this operation'));
+    }
     next();
   };
 }

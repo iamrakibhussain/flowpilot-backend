@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
+import { Role } from '@prisma/client';
 import { TeamService } from './team.service.js';
 import { sendSuccess } from '../../common/http/response.js';
-import { BadRequestError } from '../../common/errors/app-error.js';
+import { BadRequestError, ForbiddenError } from '../../common/errors/app-error.js';
 import { getSessionCookieOptions } from '../../config/security.js';
 
 export class TeamController {
@@ -35,15 +36,26 @@ export class TeamController {
     next: NextFunction,
   ): Promise<void> {
     try {
-      const organizationId = req.tenant!.organizationId;
-      const inviterUserId = req.user!.id;
+      const organizationId = req.tenant?.organizationId;
+      const inviterRole = req.tenant?.role;
+      const inviterUserId = req.user?.id;
+
+      if (!organizationId || !inviterRole || !inviterUserId) {
+        throw new ForbiddenError('Tenant authorization context required');
+      }
+
       const { email, role, staffMemberId } = req.body;
 
-      const invitation = await TeamService.sendInvitation(organizationId, inviterUserId, {
-        email,
-        role,
-        staffMemberId,
-      });
+      const invitation = await TeamService.sendInvitation(
+        organizationId,
+        inviterUserId,
+        {
+          email,
+          role,
+          staffMemberId,
+        },
+        inviterRole as Role,
+      );
 
       sendSuccess(res, invitation, 201, 'Workspace invitation sent successfully');
     } catch (err) {
@@ -75,15 +87,27 @@ export class TeamController {
     next: NextFunction,
   ): Promise<void> {
     try {
-      const organizationId = req.tenant!.organizationId;
-      const currentUserId = req.user!.id;
+      const organizationId = req.tenant?.organizationId;
+      const currentUserRole = req.tenant?.role;
+      const currentUserId = req.user?.id;
+
+      if (!organizationId || !currentUserRole || !currentUserId) {
+        throw new ForbiddenError('Tenant authorization context required');
+      }
+
       const { id } = req.params;
       const { role } = req.body;
 
       if (!id) throw new BadRequestError('Membership ID is required');
       if (!role) throw new BadRequestError('Target role is required');
 
-      const updated = await TeamService.updateMemberRole(organizationId, currentUserId, id, role);
+      const updated = await TeamService.updateMemberRole(
+        organizationId,
+        currentUserId,
+        id,
+        role,
+        currentUserRole as Role,
+      );
 
       sendSuccess(res, updated, 200, 'Team member role updated');
     } catch (err) {
@@ -93,13 +117,24 @@ export class TeamController {
 
   public static async removeMember(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const organizationId = req.tenant!.organizationId;
-      const currentUserId = req.user!.id;
+      const organizationId = req.tenant?.organizationId;
+      const currentUserRole = req.tenant?.role;
+      const currentUserId = req.user?.id;
+
+      if (!organizationId || !currentUserRole || !currentUserId) {
+        throw new ForbiddenError('Tenant authorization context required');
+      }
+
       const { id } = req.params;
 
       if (!id) throw new BadRequestError('Membership ID is required');
 
-      const result = await TeamService.removeMember(organizationId, currentUserId, id);
+      const result = await TeamService.removeMember(
+        organizationId,
+        currentUserId,
+        id,
+        currentUserRole as Role,
+      );
       sendSuccess(res, result, 200, 'Member removed from workspace');
     } catch (err) {
       next(err);

@@ -9,8 +9,16 @@ router.use(authenticate);
 router.use(tenantContextMiddleware());
 
 router.get('/settings', OrganizationController.getSettings);
-router.patch('/settings', OrganizationController.updateSettings);
+router.patch(
+  '/settings',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  OrganizationController.updateSettings,
+);
 router.post('/settings/check-slug', OrganizationController.checkSlug);
-router.get('/audit-logs', OrganizationController.getAuditLogs);
+router.get(
+  '/audit-logs',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  OrganizationController.getAuditLogs,
+);
 
 export const organizationRoutes = router;

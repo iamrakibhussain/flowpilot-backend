@@ -9,11 +9,31 @@ router.use(authenticate);
 router.use(tenantContextMiddleware());
 
 router.get('/', ServiceController.list);
-router.post('/', ServiceController.create);
+router.post(
+  '/',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  ServiceController.create,
+);
 router.get('/:id', ServiceController.getById);
-router.patch('/:id', ServiceController.update);
-router.put('/:id/staff', ServiceController.syncStaff);
-router.delete('/:id', ServiceController.delete);
-router.post('/:id/toggle-active', ServiceController.toggleActive);
+router.patch(
+  '/:id',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  ServiceController.update,
+);
+router.put(
+  '/:id/staff',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  ServiceController.syncStaff,
+);
+router.delete(
+  '/:id',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  ServiceController.delete,
+);
+router.post(
+  '/:id/toggle-active',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  ServiceController.toggleActive,
+);
 
 export const serviceRoutes = router;

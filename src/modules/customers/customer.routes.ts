@@ -15,8 +15,16 @@ router.get('/', CustomerController.list);
 router.post('/', CustomerController.create);
 router.get('/:id', CustomerController.getById);
 router.patch('/:id', CustomerController.update);
-router.delete('/:id', CustomerController.archive);
-router.post('/:id/reactivate', CustomerController.reactivate);
+router.delete(
+  '/:id',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  CustomerController.archive,
+);
+router.post(
+  '/:id/reactivate',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  CustomerController.reactivate,
+);
 router.post('/:id/notes', CustomerController.addNote);
 
 export const customerRoutes = router;
