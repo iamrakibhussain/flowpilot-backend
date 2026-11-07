@@ -129,7 +129,7 @@ export class SubscriptionService {
 
     const successUrl =
       input.successUrl ||
-      `${env.FRONTEND_URL}/dashboard/billing?status=success&session_id={CHECKOUT_SESSION_ID}`;
+      `${env.FRONTEND_URL}/dashboard/billing?checkout=success&status=success&session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = input.cancelUrl || `${env.FRONTEND_URL}/dashboard/billing?status=cancelled`;
 
     // 3. Obtain Stripe Customer ID
@@ -289,7 +289,9 @@ export class SubscriptionService {
     const billingInterval =
       (session.metadata?.billingInterval as SubscriptionBillingInterval) || 'MONTHLY';
     const now = new Date();
-    const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const isAnnual = billingInterval === 'ANNUALLY';
+    const periodDurationMs = (isAnnual ? 365 : 30) * 24 * 60 * 60 * 1000;
+    const periodEnd = new Date(now.getTime() + periodDurationMs);
 
     const stripeCustomerId =
       typeof session.customer === 'string'
@@ -326,12 +328,17 @@ export class SubscriptionService {
           billingInterval,
           stripeCustomerId: stripeCustomerId || undefined,
           stripeSubscriptionId: stripeSubscriptionId || undefined,
+          currentPeriodStart: now,
+          currentPeriodEnd: periodEnd,
           cancelAtPeriodEnd: false,
           canceledAt: null,
         },
       });
     } catch (err) {
       logger.error({ err, organizationId }, 'Failed to persist verified subscription');
+      if (env.NODE_ENV === 'production') {
+        throw new BadRequestError('Failed to persist active subscription in database');
+      }
     }
 
     // 6. Notify workspace
@@ -654,16 +661,24 @@ export class SubscriptionService {
             client_reference_id?: string;
             customer?: string;
             subscription?: string;
-            metadata?: { organizationId?: string; planSlug?: string };
+            metadata?: {
+              organizationId?: string;
+              planSlug?: string;
+              billingInterval?: string;
+            };
           };
 
           const organizationId = session.client_reference_id || session.metadata?.organizationId;
           const planSlug = session.metadata?.planSlug;
+          const billingInterval =
+            (session.metadata?.billingInterval as SubscriptionBillingInterval) || 'MONTHLY';
 
           if (organizationId && planSlug) {
             const plan = findPlanBySlug(planSlug) || getDefaultSubscriptionPlan();
             const now = new Date();
-            const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+            const isAnnual = billingInterval === 'ANNUALLY';
+            const periodDurationMs = (isAnnual ? 365 : 30) * 24 * 60 * 60 * 1000;
+            const periodEnd = new Date(now.getTime() + periodDurationMs);
 
             try {
               await (
@@ -678,6 +693,7 @@ export class SubscriptionService {
                   organizationId,
                   planId: plan.id,
                   status: 'ACTIVE',
+                  billingInterval,
                   stripeCustomerId: session.customer as string,
                   stripeSubscriptionId: session.subscription as string,
                   currentPeriodStart: now,
@@ -686,14 +702,17 @@ export class SubscriptionService {
                 update: {
                   planId: plan.id,
                   status: 'ACTIVE',
+                  billingInterval,
                   stripeCustomerId: session.customer as string,
                   stripeSubscriptionId: session.subscription as string,
+                  currentPeriodStart: now,
+                  currentPeriodEnd: periodEnd,
                   cancelAtPeriodEnd: false,
                   canceledAt: null,
                 },
               });
-            } catch {
-              // Ignore DB error
+            } catch (err) {
+              logger.error({ err, organizationId }, 'Failed to persist webhook checkout subscription');
             }
 
             logger.info(
@@ -712,10 +731,12 @@ export class SubscriptionService {
             cancel_at_period_end: boolean;
             current_period_start?: number;
             current_period_end?: number;
-            metadata?: { organizationId?: string };
+            metadata?: { organizationId?: string; planSlug?: string };
           };
 
           const orgId = sub.metadata?.organizationId;
+          const planSlug = sub.metadata?.planSlug;
+          const plan = planSlug ? findPlanBySlug(planSlug) : null;
           const statusMap: Record<string, string> = {
             active: 'ACTIVE',
             trialing: 'TRIALING',
@@ -743,6 +764,7 @@ export class SubscriptionService {
               data: {
                 status: mappedStatus,
                 cancelAtPeriodEnd: sub.cancel_at_period_end,
+                ...(plan ? { planId: plan.id } : {}),
                 ...(sub.current_period_start
                   ? { currentPeriodStart: new Date(sub.current_period_start * 1000) }
                   : {}),
