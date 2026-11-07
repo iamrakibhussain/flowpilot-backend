@@ -712,7 +712,10 @@ export class SubscriptionService {
                 },
               });
             } catch (err) {
-              logger.error({ err, organizationId }, 'Failed to persist webhook checkout subscription');
+              logger.error(
+                { err, organizationId },
+                'Failed to persist webhook checkout subscription',
+              );
             }
 
             logger.info(
