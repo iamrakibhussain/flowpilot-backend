@@ -41,6 +41,12 @@ tenantRouter.post(
 );
 
 tenantRouter.post(
+  '/verify-checkout',
+  tenantContextMiddleware({ allowedRoles: ['OWNER'] }),
+  SubscriptionController.verifyCheckout,
+);
+
+tenantRouter.post(
   '/portal',
   tenantContextMiddleware({ allowedRoles: ['OWNER'] }),
   SubscriptionController.createPortalSession,
