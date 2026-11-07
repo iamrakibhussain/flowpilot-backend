@@ -9,6 +9,7 @@ import { prisma } from '../../src/database/prisma.js';
 import { EntitlementService } from '../../src/modules/subscriptions/entitlement.service.js';
 import { StripeSubscriptionProvider } from '../../src/modules/subscriptions/provider/stripe-subscription.provider.js';
 import { Role } from '@prisma/client';
+import { env } from '../../src/config/env.js';
 
 describe('SaaS Platform Subscriptions & Entitlements Integration Suite', () => {
   const orgId = '123e4567-e89b-42d3-a456-426614174000';
@@ -57,6 +58,10 @@ describe('SaaS Platform Subscriptions & Entitlements Integration Suite', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mockSession('OWNER');
+
+    if (!env.STRIPE_WEBHOOK_SECRET) {
+      (env as any).STRIPE_WEBHOOK_SECRET = 'whsec_test_mock_webhook_secret';
+    }
 
     // Default safe mocks for counts
     vi.spyOn(prisma.membership, 'count').mockResolvedValue(1);

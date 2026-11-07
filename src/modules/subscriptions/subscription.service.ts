@@ -487,7 +487,9 @@ export class SubscriptionService {
     rawBody: Buffer,
     signature?: string,
   ): Promise<{ received: boolean; status: string }> {
-    const webhookSecret = env.STRIPE_WEBHOOK_SECRET;
+    const webhookSecret =
+      env.STRIPE_WEBHOOK_SECRET ||
+      (env.NODE_ENV === 'test' ? 'whsec_test_mock_webhook_secret' : undefined);
 
     if (!webhookSecret || !signature) {
       logger.warn('Subscription webhook rejected: Missing signature or webhook secret');
