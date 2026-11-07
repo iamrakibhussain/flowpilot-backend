@@ -14,7 +14,11 @@ router.get('/stats', QuoteController.getStats);
 router.get('/:id', QuoteController.getById);
 router.post('/', QuoteController.create);
 router.patch('/:id', QuoteController.update);
-router.delete('/:id', QuoteController.delete);
+router.delete(
+  '/:id',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  QuoteController.delete,
+);
 router.post('/:id/send', QuoteController.send);
 router.post('/:id/convert-invoice', QuoteController.convertToInvoice);
 

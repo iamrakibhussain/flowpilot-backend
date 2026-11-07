@@ -14,7 +14,11 @@ router.get('/stats', ProjectController.getStats);
 router.get('/:id', ProjectController.getById);
 router.post('/', ProjectController.create);
 router.patch('/:id', ProjectController.update);
-router.delete('/:id', ProjectController.delete);
+router.delete(
+  '/:id',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  ProjectController.delete,
+);
 
 // Task Operations (Kanban & List)
 router.post('/:id/tasks', ProjectController.createTask);

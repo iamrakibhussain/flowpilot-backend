@@ -18,6 +18,10 @@ router.patch('/:id', InvoiceController.update);
 router.patch('/:id/status', InvoiceController.updateStatus);
 router.post('/:id/record-payment', InvoiceController.recordPayment);
 router.post('/:id/send-email', InvoiceController.sendEmail);
-router.delete('/:id', InvoiceController.delete);
+router.delete(
+  '/:id',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  InvoiceController.delete,
+);
 
 export const invoiceRoutes = router;

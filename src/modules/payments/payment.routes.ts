@@ -27,7 +27,11 @@ protectedRouter.use(tenantContextMiddleware());
 
 protectedRouter.post('/invoices/:id/token', PaymentController.generateInvoiceToken);
 protectedRouter.get('/settings', PaymentController.getSettings);
-protectedRouter.patch('/settings', PaymentController.updateSettings);
+protectedRouter.patch(
+  '/settings',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  PaymentController.updateSettings,
+);
 protectedRouter.get('/transactions', PaymentController.listTransactions);
 
 router.use(protectedRouter);

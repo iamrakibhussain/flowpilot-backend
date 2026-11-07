@@ -13,9 +13,17 @@ router.get('/', ContractController.list);
 router.get('/:id', ContractController.getById);
 router.post('/', ContractController.create);
 router.patch('/:id', ContractController.update);
-router.delete('/:id', ContractController.delete);
+router.delete(
+  '/:id',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  ContractController.delete,
+);
 router.post('/:id/send', ContractController.send);
-router.post('/:id/countersign', ContractController.countersign);
+router.post(
+  '/:id/countersign',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  ContractController.countersign,
+);
 
 export const contractRoutes = router;
 

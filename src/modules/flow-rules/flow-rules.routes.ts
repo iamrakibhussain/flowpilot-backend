@@ -15,13 +15,37 @@ router.get('/executions', FlowRulesController.getExecutions);
 
 // FlowRules CRUD & Operations
 router.get('/', FlowRulesController.listRules);
-router.post('/', FlowRulesController.createRule);
+router.post(
+  '/',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  FlowRulesController.createRule,
+);
 router.get('/:id/executions', FlowRulesController.getExecutions);
 router.get('/:id', FlowRulesController.getRuleById);
-router.put('/:id', FlowRulesController.updateRule);
-router.patch('/:id', FlowRulesController.updateRule);
-router.patch('/:id/toggle', FlowRulesController.toggleRule);
-router.post('/:id/test', FlowRulesController.testRule);
-router.delete('/:id', FlowRulesController.deleteRule);
+router.put(
+  '/:id',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  FlowRulesController.updateRule,
+);
+router.patch(
+  '/:id',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  FlowRulesController.updateRule,
+);
+router.patch(
+  '/:id/toggle',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  FlowRulesController.toggleRule,
+);
+router.post(
+  '/:id/test',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  FlowRulesController.testRule,
+);
+router.delete(
+  '/:id',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  FlowRulesController.deleteRule,
+);
 
 export default router;

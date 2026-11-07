@@ -694,7 +694,7 @@ export class RecurringService {
    * Uses PostgreSQL Advisory Lock (ID: 5432001) for strict single-execution concurrency safety.
    * Dispatches invoices for all due schedules across all organizations and rolls cycles forward.
    */
-  public static async processDueSchedules(): Promise<{
+  public static async processDueSchedules(organizationId?: string): Promise<{
     processedCount: number;
     invoicesCreated: number;
     completedSchedules: number;
@@ -720,11 +720,12 @@ export class RecurringService {
     try {
       const now = new Date();
 
-      // 2. Fetch all ACTIVE schedules where nextRunDate <= now
+      // 2. Fetch all ACTIVE schedules where nextRunDate <= now (strictly scoped if requested)
       const dueSchedules = await prisma.recurringSchedule.findMany({
         where: {
           status: RecurringStatus.ACTIVE,
           nextRunDate: { lte: now },
+          ...(organizationId ? { organizationId } : {}),
         },
         include: {
           customer: true,

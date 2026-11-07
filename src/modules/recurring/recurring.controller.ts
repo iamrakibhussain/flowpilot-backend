@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { RecurringService } from './recurring.service.js';
 import { sendSuccess } from '../../common/http/response.js';
+import { ForbiddenError } from '../../common/errors/app-error.js';
 import {
   createRecurringScheduleSchema,
   updateRecurringScheduleSchema,
@@ -162,9 +163,18 @@ export class RecurringController {
    * POST /api/v1/recurring/process-now
    * Trigger immediate processing of all due schedules
    */
-  public static async processNow(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  public static async processNow(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const result = await RecurringService.processDueSchedules();
+      const organizationId = req.tenant!.organizationId;
+      const userRole = req.tenant!.role;
+
+      if (userRole !== 'OWNER' && userRole !== 'ADMIN') {
+        throw new ForbiddenError(
+          'Only workspace Owners and Admins can trigger recurring processing',
+        );
+      }
+
+      const result = await RecurringService.processDueSchedules(organizationId);
       sendSuccess(res, result, 200, 'Recurring schedules processed');
     } catch (err) {
       next(err);

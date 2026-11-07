@@ -19,9 +19,25 @@ router.delete('/blocked-time/:id', BlockedTimeController.delete);
 router.get('/', StaffController.list);
 router.get('/metrics', StaffController.getMetrics);
 router.get('/:id', StaffController.getById);
-router.post('/', StaffController.create);
-router.patch('/:id', StaffController.update);
-router.patch('/:id/status', StaffController.updateStatus);
-router.delete('/:id', StaffController.delete);
+router.post(
+  '/',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  StaffController.create,
+);
+router.patch(
+  '/:id',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  StaffController.update,
+);
+router.patch(
+  '/:id/status',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  StaffController.updateStatus,
+);
+router.delete(
+  '/:id',
+  tenantContextMiddleware({ allowedRoles: ['OWNER', 'ADMIN'] }),
+  StaffController.delete,
+);
 
 export const staffRoutes = router;
