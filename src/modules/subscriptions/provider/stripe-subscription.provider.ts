@@ -240,6 +240,24 @@ export class StripeSubscriptionProvider {
   }
 
   /**
+   * Retrieve an existing Stripe checkout session to verify payment completion
+   */
+  public static async retrieveCheckoutSession(
+    sessionId: string,
+  ): Promise<Stripe.Checkout.Session | null> {
+    const client = this.getClient();
+    if (!client) {
+      return null;
+    }
+    try {
+      return await client.checkout.sessions.retrieve(sessionId);
+    } catch (err) {
+      logger.error({ err, sessionId }, 'Failed to retrieve Stripe checkout session');
+      return null;
+    }
+  }
+
+  /**
    * Cancel or schedule cancellation for a Stripe subscription
    */
   public static async cancelSubscription(params: {

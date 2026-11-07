@@ -256,6 +256,40 @@ export class SubscriptionController {
   }
 
   /**
+   * POST /api/v1/subscriptions/verify-checkout
+   * Tenant-scoped: OWNER only — Verify and activate a completed Stripe checkout session
+   */
+  public static async verifyCheckout(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
+    try {
+      const organizationId = req.tenant?.organizationId;
+      const currentUserId = req.user?.id;
+
+      if (!organizationId || !currentUserId) {
+        throw new UnauthorizedError('Organization and user context required');
+      }
+
+      const { sessionId } = req.body;
+      if (!sessionId || typeof sessionId !== 'string') {
+        throw new BadRequestError('sessionId is required');
+      }
+
+      const subscription = await SubscriptionService.verifyCheckoutSession(
+        organizationId,
+        currentUserId,
+        sessionId,
+      );
+
+      sendSuccess(res, subscription);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
    * POST /api/v1/subscriptions/webhook
    * Public webhook endpoint for Stripe events
    */
