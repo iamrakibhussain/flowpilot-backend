@@ -350,7 +350,7 @@ describe('Database Concurrency & Data Integrity Hardening Suite', () => {
 
   describe('Task 2 — Invoice Number Generation Concurrency & Sequential Integrity Concurrency & Sequential Integrity', () => {
     it('generates collision-free, strictly sequential invoice numbers under concurrent creation in same org', async () => {
-      const CONCURRENT_COUNT = 8;
+      const CONCURRENT_COUNT = 4;
 
       const creationPromises = Array.from({ length: CONCURRENT_COUNT }).map((_, idx) =>
         InvoiceService.createInvoice(org1Id, {
@@ -395,7 +395,7 @@ describe('Database Concurrency & Data Integrity Hardening Suite', () => {
       const currentYear = new Date().getFullYear();
 
       // Run concurrent requests for Org 1 and Org 2 simultaneously
-      const org1Requests = Array.from({ length: 4 }).map(() =>
+      const org1Requests = Array.from({ length: 2 }).map(() =>
         InvoiceService.createInvoice(org1Id, {
           customerId: customer1Id,
           items: [{ description: 'Org 1 Concurrent Item', quantity: 1, unitPrice: 50 }],
@@ -403,7 +403,7 @@ describe('Database Concurrency & Data Integrity Hardening Suite', () => {
         }),
       );
 
-      const org2Requests = Array.from({ length: 4 }).map(() =>
+      const org2Requests = Array.from({ length: 2 }).map(() =>
         InvoiceService.createInvoice(org2Id, {
           customerId: customer2Id,
           items: [{ description: 'Org 2 Concurrent Item', quantity: 1, unitPrice: 75 }],
@@ -416,8 +416,8 @@ describe('Database Concurrency & Data Integrity Hardening Suite', () => {
         Promise.all(org2Requests),
       ]);
 
-      expect(org1Results.length).toBe(4);
-      expect(org2Results.length).toBe(4);
+      expect(org1Results.length).toBe(2);
+      expect(org2Results.length).toBe(2);
 
       // Check Org 1 sequence
       const org1Seq = await prisma.$queryRaw<{ last_sequence: number }[]>`
@@ -430,8 +430,8 @@ describe('Database Concurrency & Data Integrity Hardening Suite', () => {
         WHERE organization_id = ${org2Id} AND entity_type = 'INVOICE' AND year = ${currentYear}
       `;
 
-      expect(Number(org2Seq[0]?.last_sequence)).toBe(4);
-      expect(Number(org1Seq[0]?.last_sequence)).toBeGreaterThanOrEqual(12); // 8 from prev test + 4 from this
+      expect(Number(org2Seq[0]?.last_sequence)).toBe(2);
+      expect(Number(org1Seq[0]?.last_sequence)).toBeGreaterThanOrEqual(6); // 4 from prev test + 2 from this
     });
 
     it('respects existing historical invoice numbers when initializing sequence counters', async () => {

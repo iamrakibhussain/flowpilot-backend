@@ -3,6 +3,7 @@ import { prisma } from '../../database/prisma.js';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../../common/errors/app-error.js';
 import { Role } from '@prisma/client';
 import { EmailService } from '../../common/email/email.service.js';
+import { EntitlementService } from '../subscriptions/entitlement.service.js';
 import { generateSessionToken, hashSessionToken, hashPassword } from '../auth/crypto.js';
 import {
   TeamMemberItem,
@@ -133,6 +134,9 @@ export class TeamService {
     if (input.role === Role.OWNER && inviterRole !== Role.OWNER) {
       throw new ForbiddenError('Only workspace Owners can invite new Owners');
     }
+
+    // Enforce SaaS Subscription Plan Limits
+    await EntitlementService.enforceLimit(organizationId, 'members');
 
     // 1. Check if user with this email is already an active member of this organization
     const existingUser = await prisma.user.findUnique({
