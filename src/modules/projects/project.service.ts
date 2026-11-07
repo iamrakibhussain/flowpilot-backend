@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import { NotFoundError, BadRequestError } from '../../common/errors/app-error.js';
 import { NotificationService } from '../notifications/notification.service.js';
+import { EntitlementService } from '../subscriptions/entitlement.service.js';
 import {
   ListProjectsQuery,
   CreateProjectInput,
@@ -322,6 +323,8 @@ export class ProjectService {
     userId: string,
     input: CreateProjectInput,
   ): Promise<ProjectDetailResponse> {
+    // Enforce SaaS Subscription Plan Limits
+    await EntitlementService.enforceLimit(organizationId, 'projects');
     // Verify customer belongs to organization
     if (input.customerId) {
       const customer = await prisma.customer.findFirst({

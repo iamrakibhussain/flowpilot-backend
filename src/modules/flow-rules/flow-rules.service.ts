@@ -12,6 +12,7 @@ import {
 } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import { NotFoundError } from '../../common/errors/app-error.js';
+import { EntitlementService } from '../subscriptions/entitlement.service.js';
 import { logger } from '../../common/logging/logger.js';
 import { InvoiceService } from '../invoices/invoice.service.js';
 import { EmailService } from '../../common/email/email.service.js';
@@ -90,6 +91,8 @@ export class FlowRulesService {
     organizationId: string,
     input: CreateFlowRuleInput,
   ): Promise<FlowRuleListItem> {
+    // Enforce SaaS Subscription Plan Feature Entitlement
+    await EntitlementService.enforceFeature(organizationId, 'flowRules');
     const rule = await prisma.flowRule.create({
       data: {
         organizationId,

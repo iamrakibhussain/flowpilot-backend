@@ -235,6 +235,7 @@ model Organization {
   retainerHourLogs       RetainerHourLog[]
   flowRules              FlowRule[]
   organizationSequences  OrganizationSequence[]
+  subscription           OrganizationSubscription?
 
   @@map("organizations")
 }
@@ -1054,4 +1055,124 @@ model OrganizationSequence {
   @@unique([organizationId, entityType, year])
   @@index([organizationId])
   @@map("organization_sequences")
+}
+
+// ==========================================
+// SAAS PLATFORM SUBSCRIPTIONS & ENTITLEMENTS
+// ==========================================
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+  INCOMPLETE
+}
+
+enum SubscriptionBillingInterval {
+  MONTHLY
+  ANNUALLY
+}
+
+enum SubscriptionTier {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+model SubscriptionPlan {
+  id              String                      @id @default(uuid())
+  slug            String                      @unique
+  name            String
+  tier            SubscriptionTier            @default(STARTER)
+  description     String?
+  price           Decimal                     @default(0.0) @db.Decimal(10, 2)
+  currency        String                      @default("USD")
+  interval        SubscriptionBillingInterval @default(MONTHLY)
+  stripePriceId   String?                     @unique @map("stripe_price_id")
+  stripeProductId String?                     @map("stripe_product_id")
+  isActive        Boolean                     @default(true) @map("is_active")
+
+  // Limits & Entitlements
+  maxMembers      Int                         @default(5) @map("max_members")
+  maxCustomers    Int                         @default(100) @map("max_customers")
+  maxProjects     Int                         @default(10) @map("max_projects")
+  maxServices     Int                         @default(20) @map("max_services")
+  hasFlowRules    Boolean                     @default(false) @map("has_flow_rules")
+  hasCustomDomain Boolean                     @default(false) @map("has_custom_domain")
+  hasAnalytics    Boolean                     @default(true) @map("has_analytics")
+  hasRecurring    Boolean                     @default(false) @map("has_recurring")
+  hasClientPortal Boolean                     @default(true) @map("has_client_portal")
+
+  createdAt       DateTime                    @default(now()) @map("created_at")
+  updatedAt       DateTime                    @updatedAt @map("updated_at")
+
+  subscriptions   OrganizationSubscription[]
+
+  @@map("subscription_plans")
+}
+
+model OrganizationSubscription {
+  id                   String                      @id @default(uuid())
+  organizationId       String                      @unique @map("organization_id")
+  planId               String                      @map("plan_id")
+  status               SubscriptionStatus          @default(ACTIVE)
+  billingInterval      SubscriptionBillingInterval @default(MONTHLY) @map("billing_interval")
+  currentPeriodStart   DateTime                    @default(now()) @map("current_period_start")
+  currentPeriodEnd     DateTime                    @map("current_period_end")
+  trialEndsAt          DateTime?                   @map("trial_ends_at")
+  canceledAt           DateTime?                   @map("canceled_at")
+  cancelAtPeriodEnd    Boolean                     @default(false) @map("cancel_at_period_end")
+  stripeCustomerId     String?                     @map("stripe_customer_id")
+  stripeSubscriptionId String?                     @unique @map("stripe_subscription_id")
+  createdAt            DateTime                    @default(now()) @map("created_at")
+  updatedAt            DateTime                    @updatedAt @map("updated_at")
+
+  organization         Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan                 SubscriptionPlan            @relation(fields: [planId], references: [id])
+  invoices             SubscriptionBillingRecord[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([stripeCustomerId])
+  @@map("organization_subscriptions")
+}
+
+model SubscriptionBillingRecord {
+  id                    String                   @id @default(uuid())
+  subscriptionId        String                   @map("subscription_id")
+  organizationId        String                   @map("organization_id")
+  amount                Decimal                  @db.Decimal(10, 2)
+  currency              String                   @default("USD")
+  status                String                   @default("PAID") // PAID, FAILED, PENDING, REFUNDED
+  stripeInvoiceId       String?                  @unique @map("stripe_invoice_id")
+  stripePaymentIntentId String?                  @map("stripe_payment_intent_id")
+  invoicePdfUrl         String?                  @map("invoice_pdf_url")
+  paidAt                DateTime?                @map("paid_at")
+  billingPeriodStart    DateTime?                @map("billing_period_start")
+  billingPeriodEnd      DateTime?                @map("billing_period_end")
+  createdAt             DateTime                 @default(now()) @map("created_at")
+
+  subscription          OrganizationSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([subscriptionId])
+  @@map("subscription_billing_records")
+}
+
+model SubscriptionWebhookEvent {
+  id           String    @id @default(uuid())
+  eventId      String    @unique @map("event_id")
+  eventType    String    @map("event_type")
+  status       String    @default("PROCESSED") // PENDING, PROCESSED, FAILED, IGNORED
+  payload      Json?
+  errorMessage String?   @map("error_message")
+  processedAt  DateTime? @map("processed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([eventId])
+  @@index([eventType])
+  @@map("subscription_webhook_events")
 }

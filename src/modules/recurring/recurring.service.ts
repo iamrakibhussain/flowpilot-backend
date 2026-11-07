@@ -12,6 +12,7 @@ import {
 } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import { NotFoundError, BadRequestError } from '../../common/errors/app-error.js';
+import { EntitlementService } from '../subscriptions/entitlement.service.js';
 import { logger } from '../../common/logging/logger.js';
 import { InvoiceService } from '../invoices/invoice.service.js';
 import {
@@ -143,6 +144,8 @@ export class RecurringService {
     organizationId: string,
     input: CreateRecurringScheduleInput,
   ): Promise<RecurringScheduleListItem> {
+    // Enforce SaaS Subscription Plan Feature Entitlement
+    await EntitlementService.enforceFeature(organizationId, 'recurring');
     // 1. Validate customer existence in the organization
     const customer = await prisma.customer.findFirst({
       where: { id: input.customerId, organizationId },

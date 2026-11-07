@@ -1,6 +1,7 @@
 import { CustomerStatus, Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import { BadRequestError, NotFoundError } from '../../common/errors/app-error.js';
+import { EntitlementService } from '../subscriptions/entitlement.service.js';
 import {
   CustomerListItem,
   CustomerListResponse,
@@ -287,6 +288,9 @@ export class CustomerService {
     if (!name || !email) {
       throw new BadRequestError('Customer name and email are required');
     }
+
+    // Enforce SaaS Subscription Plan Limits
+    await EntitlementService.enforceLimit(organizationId, 'customers');
 
     // Check duplicate email within the same organization
     const existing = await prisma.customer.findFirst({

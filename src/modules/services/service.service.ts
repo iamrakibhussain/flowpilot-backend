@@ -1,6 +1,7 @@
 import { Prisma, Service } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import { NotFoundError, BadRequestError } from '../../common/errors/app-error.js';
+import { EntitlementService } from '../subscriptions/entitlement.service.js';
 import {
   ServiceItem,
   CreateServiceInput,
@@ -146,6 +147,9 @@ export class ServiceCatalogService {
     if (input.price === undefined || input.price < 0) {
       throw new BadRequestError('Service price must be a non-negative number');
     }
+
+    // Enforce SaaS Subscription Plan Limits
+    await EntitlementService.enforceLimit(organizationId, 'services');
 
     const duration = input.durationMinutes
       ? Math.max(15, Math.min(480, input.durationMinutes))
