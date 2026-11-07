@@ -10,6 +10,7 @@ import { EntitlementService } from '../../src/modules/subscriptions/entitlement.
 import { StripeSubscriptionProvider } from '../../src/modules/subscriptions/provider/stripe-subscription.provider.js';
 import { Role } from '@prisma/client';
 import { env } from '../../src/config/env.js';
+import Stripe from 'stripe';
 
 describe('SaaS Platform Subscriptions & Entitlements Integration Suite', () => {
   const orgId = '123e4567-e89b-42d3-a456-426614174000';
@@ -186,6 +187,55 @@ describe('SaaS Platform Subscriptions & Entitlements Integration Suite', () => {
           planSlug: 'pro-monthly',
           billingInterval: 'MONTHLY',
         });
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('POST /api/v1/subscriptions/verify-checkout > allows OWNER to verify completed checkout session', async () => {
+      vi.spyOn(StripeSubscriptionProvider, 'retrieveCheckoutSession').mockResolvedValue({
+        id: 'cs_test_mock_verified',
+        payment_status: 'paid',
+        status: 'complete',
+        client_reference_id: orgId,
+        customer: 'cus_test_123',
+        subscription: 'sub_test_123',
+        metadata: {
+          organizationId: orgId,
+          planSlug: 'pro-monthly',
+          billingInterval: 'MONTHLY',
+        },
+      } as unknown as Stripe.Checkout.Session);
+
+      const app = createSubscriptionTestApp();
+      const res = await request(app)
+        .post('/api/v1/subscriptions/verify-checkout')
+        .set('Cookie', ['flowpilot_session=mock-token'])
+        .set('X-Organization-Id', orgId)
+        .send({ sessionId: 'cs_test_mock_verified' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.status).toBe('ACTIVE');
+    });
+
+    it('POST /api/v1/subscriptions/verify-checkout > rejects if session belongs to another organization', async () => {
+      vi.spyOn(StripeSubscriptionProvider, 'retrieveCheckoutSession').mockResolvedValue({
+        id: 'cs_test_other_org',
+        payment_status: 'paid',
+        status: 'complete',
+        client_reference_id: 'other-org-id',
+        metadata: {
+          organizationId: 'other-org-id',
+        },
+      } as unknown as Stripe.Checkout.Session);
+
+      const app = createSubscriptionTestApp();
+      const res = await request(app)
+        .post('/api/v1/subscriptions/verify-checkout')
+        .set('Cookie', ['flowpilot_session=mock-token'])
+        .set('X-Organization-Id', orgId)
+        .send({ sessionId: 'cs_test_other_org' });
 
       expect(res.status).toBe(403);
       expect(res.body.success).toBe(false);
