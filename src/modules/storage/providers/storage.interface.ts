@@ -34,4 +34,3 @@ export interface IStorageProvider {
    */
   download?(key: string): Promise<StorageFileDownload | null>;
 }
-

@@ -289,7 +289,9 @@ describe('Providers Unit Tests', () => {
       const call = fetchSpy.mock.calls[0]!;
       expect(call[0]).toBe(`${fakeUrl}/storage/v1/object/flowpilot-public/${key}`);
       expect((call[1]?.headers as Record<string, string>)['apikey']).toBe(fakeKey);
-      expect((call[1]?.headers as Record<string, string>)['Authorization']).toBe(`Bearer ${fakeKey}`);
+      expect((call[1]?.headers as Record<string, string>)['Authorization']).toBe(
+        `Bearer ${fakeKey}`,
+      );
       expect(result.publicUrl).toBe(`${fakeUrl}/storage/v1/object/public/flowpilot-public/${key}`);
       expect(result.url).toBe(`${fakeUrl}/storage/v1/object/public/flowpilot-public/${key}`);
       expect(result.visibility).toBe('public');
@@ -307,7 +309,9 @@ describe('Providers Unit Tests', () => {
         )
         .mockResolvedValueOnce(
           new Response(
-            JSON.stringify({ signedURL: '/object/sign/flowpilot-private/documents/doc.pdf?token=abc' }),
+            JSON.stringify({
+              signedURL: '/object/sign/flowpilot-private/documents/doc.pdf?token=abc',
+            }),
             { status: 200 },
           ),
         );
@@ -336,7 +340,9 @@ describe('Providers Unit Tests', () => {
     it('should generate signed URL with options and custom expiry', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
         new Response(
-          JSON.stringify({ signedURL: '/storage/v1/object/sign/flowpilot-private/invoices/inv.pdf?token=xyz' }),
+          JSON.stringify({
+            signedURL: '/storage/v1/object/sign/flowpilot-private/invoices/inv.pdf?token=xyz',
+          }),
           { status: 200 },
         ),
       );
@@ -345,7 +351,9 @@ describe('Providers Unit Tests', () => {
       const signedUrl = await provider.getSignedUrl(key, { expiresInSeconds: 600 });
 
       expect(fetchSpy).toHaveBeenCalledTimes(1);
-      expect(signedUrl).toBe(`${fakeUrl}/storage/v1/object/sign/flowpilot-private/invoices/inv.pdf?token=xyz`);
+      expect(signedUrl).toBe(
+        `${fakeUrl}/storage/v1/object/sign/flowpilot-private/invoices/inv.pdf?token=xyz`,
+      );
     });
 
     it('should check file existence across public and private buckets', async () => {
@@ -359,9 +367,11 @@ describe('Providers Unit Tests', () => {
     });
 
     it('should delete file by issuing DELETE request with prefixes', async () => {
-      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-        new Response(JSON.stringify({ message: 'Successfully deleted' }), { status: 200 }),
-      );
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(
+          new Response(JSON.stringify({ message: 'Successfully deleted' }), { status: 200 }),
+        );
 
       const deleted = await provider.delete('organizations/org-123/branding/logo.png');
       expect(deleted).toBe(true);
