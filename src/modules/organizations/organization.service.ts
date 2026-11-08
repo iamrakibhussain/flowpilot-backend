@@ -238,7 +238,7 @@ export class OrganizationSettingsService {
       name: org.name,
       slug: org.slug,
       status: org.status,
-      logoUrl: org.logoUrl,
+      logoUrl: org.logoUrl ? org.logoUrl.replace(/%2f/gi, '/') : null,
       tagline: org.tagline,
       brandColor: org.brandColor || '#2563eb',
       customDomain: org.customDomain || null,
