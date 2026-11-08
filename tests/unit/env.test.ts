@@ -48,10 +48,23 @@ describe('Environment Configuration Validation', () => {
       NODE_ENV: 'production',
       COOKIE_SECRET: 'prod_unique_secure_random_key_9876543210_valid',
       DATABASE_URL: 'postgresql://postgres:secret@prod-db:5432/flowpilot_prod',
+      SUPABASE_URL: 'https://test-project.supabase.co',
+      SUPABASE_SERVICE_ROLE_KEY: 'test-supabase-service-role-key-32chars-min',
     });
 
     expect(config.NODE_ENV).toBe('production');
     expect(config.COOKIE_SECRET).toBe('prod_unique_secure_random_key_9876543210_valid');
+    expect(config.SUPABASE_URL).toBe('https://test-project.supabase.co');
+  });
+
+  it('rejects production configuration when cloud storage credentials are omitted', () => {
+    expect(() => {
+      validateEnv({
+        NODE_ENV: 'production',
+        COOKIE_SECRET: 'prod_unique_secure_random_key_9876543210_valid',
+        DATABASE_URL: 'postgresql://postgres:secret@prod-db:5432/flowpilot_prod',
+      });
+    }).toThrow(/Production requires cloud storage credentials/);
   });
 
   it('rejects production configuration when COOKIE_SECRET is omitted (default fallback)', () => {
@@ -59,6 +72,8 @@ describe('Environment Configuration Validation', () => {
       validateEnv({
         NODE_ENV: 'production',
         DATABASE_URL: 'postgresql://postgres:secret@prod-db:5432/flowpilot_prod',
+        SUPABASE_URL: 'https://test-project.supabase.co',
+        SUPABASE_SERVICE_ROLE_KEY: 'test-supabase-service-role-key-32chars-min',
       });
     }).toThrow(/COOKIE_SECRET must be explicitly set to a secure, non-default value in production/);
   });
@@ -69,6 +84,8 @@ describe('Environment Configuration Validation', () => {
         NODE_ENV: 'production',
         COOKIE_SECRET: 'development_cookie_secret_at_least_32_characters_long_min',
         DATABASE_URL: 'postgresql://postgres:secret@prod-db:5432/flowpilot_prod',
+        SUPABASE_URL: 'https://test-project.supabase.co',
+        SUPABASE_SERVICE_ROLE_KEY: 'test-supabase-service-role-key-32chars-min',
       });
     }).toThrow(/COOKIE_SECRET must be explicitly set to a secure, non-default value in production/);
   });
