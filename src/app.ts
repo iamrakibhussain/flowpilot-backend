@@ -84,7 +84,20 @@ export function createApp(options: AppOptions = { enableRateLimiting: true }): E
         (contentLength !== undefined && contentLength !== '0') || Boolean(transferEncoding);
       if (hasBody) {
         const contentType = req.headers['content-type'];
-        if (!contentType || !contentType.toLowerCase().includes('application/json')) {
+        const isStorageUpload = req.path.startsWith('/api/v1/storage/upload');
+        if (isStorageUpload) {
+          if (!contentType || !contentType.toLowerCase().includes('multipart/form-data')) {
+            res.status(415).json({
+              success: false,
+              error: {
+                code: 'UNSUPPORTED_MEDIA_TYPE',
+                message: 'Content-Type must be multipart/form-data for file uploads',
+                status: 415,
+              },
+            });
+            return;
+          }
+        } else if (!contentType || !contentType.toLowerCase().includes('application/json')) {
           res.status(415).json({
             success: false,
             error: {

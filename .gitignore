@@ -32,3 +32,6 @@ Thumbs.db
 # Test outputs
 junit.xml
 test-results/
+
+# Local uploads
+uploads/
