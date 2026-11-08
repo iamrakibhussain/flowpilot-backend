@@ -5,6 +5,7 @@ import { disconnectDatabase } from './database/prisma.js';
 import { AuthService } from './modules/auth/auth.service.js';
 import { initReminderCron } from './modules/notifications/reminder.cron.js';
 import { initRecurringBillingCron } from './modules/recurring/recurring.cron.js';
+import { createShutdownHandler } from './common/lifecycle/shutdown.js';
 
 const app = createApp();
 
@@ -57,42 +58,23 @@ if (recurringInterval) {
 }
 
 // Graceful shutdown handling
-let isShuttingDown = false;
+export const handleShutdown = createShutdownHandler({
+  server,
+  disconnectDb: disconnectDatabase,
+  intervals: [tokenCleanupInterval, reminderInterval, recurringInterval],
+  logger,
+});
 
-async function handleShutdown(signal: string): Promise<void> {
-  if (isShuttingDown) return;
-  isShuttingDown = true;
-  clearInterval(tokenCleanupInterval);
-  if (recurringInterval) clearInterval(recurringInterval);
-
-  logger.info({ signal }, 'Received termination signal. Starting graceful shutdown...');
-
-  // Set timeout to force exit if cleanup takes too long
-  const forceExitTimeout = setTimeout(() => {
-    logger.error('Graceful shutdown timed out. Forcing process termination.');
-    process.exit(1);
-  }, 10000);
-  forceExitTimeout.unref();
-
-  server.close(async (err) => {
-    if (err) {
-      logger.error({ err }, 'Error closing HTTP server');
-      process.exit(1);
-    }
-
-    try {
-      await disconnectDatabase();
-      logger.info('Graceful shutdown completed successfully.');
-      process.exit(0);
-    } catch (dbErr) {
-      logger.error({ dbErr }, 'Error during database disconnect');
-      process.exit(1);
-    }
+process.on('SIGTERM', () => {
+  handleShutdown('SIGTERM').catch((err) => {
+    logger.fatal({ err }, 'Fatal error during SIGTERM graceful shutdown');
   });
-}
-
-process.on('SIGTERM', () => handleShutdown('SIGTERM'));
-process.on('SIGINT', () => handleShutdown('SIGINT'));
+});
+process.on('SIGINT', () => {
+  handleShutdown('SIGINT').catch((err) => {
+    logger.fatal({ err }, 'Fatal error during SIGINT graceful shutdown');
+  });
+});
 
 process.on('unhandledRejection', (reason) => {
   logger.fatal({ reason }, 'Unhandled Promise Rejection detected');
