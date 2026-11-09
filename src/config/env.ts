@@ -19,6 +19,7 @@ const baseEnvSchema = z.object({
     .default(
       'postgresql://flowpilot:flowpilot_password@localhost:5432/flowpilot_dev?schema=public',
     ),
+  DIRECT_URL: z.string().url().optional(),
   CORS_ORIGIN: z
     .string()
     .default('http://localhost:3000')
@@ -36,7 +37,12 @@ const baseEnvSchema = z.object({
     .string()
     .min(32, 'COOKIE_SECRET must be at least 32 characters')
     .default('development_cookie_secret_at_least_32_characters_long_min'),
+  COOKIE_SAME_SITE: z.enum(['strict', 'lax', 'none']).optional(),
   SESSION_EXPIRY_DAYS: z.coerce.number().int().positive().default(7),
+  ENABLE_BACKGROUND_JOBS: z
+    .string()
+    .transform((val) => val === 'true' || val === '1')
+    .default('true'),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900000), // 15 mins
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(100),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),

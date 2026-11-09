@@ -1,10 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   EmailService,
   escapeHtml,
   isValidEmail,
   hasCrlf,
 } from '../../src/common/email/email.service.js';
+import { sanitizeSubjectForLog } from '../../src/common/email/email.types.js';
+import { logger } from '../../src/common/logging/logger.js';
 import { EmailProviderFactory } from '../../src/common/email/email-provider.factory.js';
 import { TestEmailProvider } from '../../src/common/email/providers/test.provider.js';
 import { ConsoleSimulationProvider } from '../../src/common/email/providers/console.provider.js';
@@ -162,6 +164,63 @@ describe('Email Infrastructure & Security Test Suite', () => {
       expect(res.status).toBe('simulated');
       expect(res.provider).toBe('console');
       expect(res.messageId).toContain('sim-');
+    });
+
+    it('redacts sensitive OTPs and tokens from console logs and never leaks email bodies', async () => {
+      const consoleProvider = new ConsoleSimulationProvider();
+      const logSpy = vi.spyOn(logger, 'info');
+
+      await consoleProvider.send({
+        to: 'user@example.com',
+        subject: '648421 is your FlowPilot verification code',
+        text: 'Secret body with password reset link: https://app.flowpilot.com/reset?token=secret_abc123',
+        html: '<p>Secret body with password reset link</p>',
+        attachments: [{ filename: 'contract.pdf', content: Buffer.from('data') }],
+      });
+
+      expect(logSpy).toHaveBeenCalled();
+      const lastCall = logSpy.mock.calls[logSpy.mock.calls.length - 1];
+      const logPayload = lastCall?.[0] as Record<string, any>;
+
+      // Proves 6-digit OTP is redacted from logged subject
+      expect(logPayload.subject).toBe('[REDACTED_CODE] is your FlowPilot verification code');
+      expect(logPayload.subject).not.toContain('648421');
+
+      // Proves email text, HTML body, and attachment payloads are strictly excluded from logs
+      expect(logPayload.text).toBeUndefined();
+      expect(logPayload.html).toBeUndefined();
+      expect(logPayload.attachments).toBeUndefined();
+      expect(logPayload.hasAttachments).toBe(true);
+
+      logSpy.mockRestore();
+    });
+
+    it('sanitizeSubjectForLog redacts OTP codes, query secrets, and high-entropy tokens while preserving business identifiers', () => {
+      // Redacts 6-digit verification codes
+      expect(sanitizeSubjectForLog('648421 is your FlowPilot verification code')).toBe(
+        '[REDACTED_CODE] is your FlowPilot verification code',
+      );
+      expect(sanitizeSubjectForLog('Your verification code is 123456')).toBe(
+        'Your verification code is [REDACTED_CODE]',
+      );
+
+      // Redacts query token secrets
+      expect(sanitizeSubjectForLog('Portal Access: token=a1b2c3d4e5f6g7h8i9j0')).toBe(
+        'Portal Access: token=[REDACTED]',
+      );
+
+      // Redacts raw 24+ character hex tokens
+      expect(sanitizeSubjectForLog('Session alert for 0123456789abcdef0123456789abcdef')).toBe(
+        'Session alert for [REDACTED_TOKEN]',
+      );
+
+      // Preserves non-sensitive operational identifiers
+      expect(
+        sanitizeSubjectForLog('Invoice INV-2026-440 from Fintech Solutions (USD 2,400.00)'),
+      ).toBe('Invoice INV-2026-440 from Fintech Solutions (USD 2,400.00)');
+      expect(sanitizeSubjectForLog('Reset your FlowPilot account password')).toBe(
+        'Reset your FlowPilot account password',
+      );
     });
 
     it('supports instantiation of modern REST API providers', () => {

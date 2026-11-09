@@ -21,29 +21,34 @@ const server = app.listen(env.PORT, env.HOST, () => {
   );
 });
 
-// Periodic maintenance: Purge expired tokens and sessions (runs every hour)
-const tokenCleanupInterval = setInterval(
-  () => {
-    AuthService.cleanupExpiredTokens()
-      .then((stats) => {
-        if (
-          stats.expiredSessions > 0 ||
-          stats.expiredResetTokens > 0 ||
-          stats.expiredVerificationCodes > 0
-        ) {
-          logger.info(
-            { event: 'maintenance.cleanup', stats },
-            'Automated cleanup purged expired tokens and sessions',
-          );
-        }
-      })
-      .catch((err) => {
-        logger.error({ err }, 'Failed to run automated token cleanup maintenance');
-      });
-  },
-  60 * 60 * 1000,
-);
-tokenCleanupInterval.unref();
+// Periodic maintenance: Purge expired tokens and sessions (runs every hour when background jobs enabled)
+const tokenCleanupInterval =
+  env.ENABLE_BACKGROUND_JOBS !== false
+    ? setInterval(
+        () => {
+          AuthService.cleanupExpiredTokens()
+            .then((stats) => {
+              if (
+                stats.expiredSessions > 0 ||
+                stats.expiredResetTokens > 0 ||
+                stats.expiredVerificationCodes > 0
+              ) {
+                logger.info(
+                  { event: 'maintenance.cleanup', stats },
+                  'Automated cleanup purged expired tokens and sessions',
+                );
+              }
+            })
+            .catch((err) => {
+              logger.error({ err }, 'Failed to run automated token cleanup maintenance');
+            });
+        },
+        60 * 60 * 1000,
+      )
+    : null;
+if (tokenCleanupInterval) {
+  tokenCleanupInterval.unref();
+}
 
 // Periodic 24-hour advance appointment reminder cron
 const reminderInterval = initReminderCron();

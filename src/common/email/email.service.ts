@@ -2,7 +2,7 @@ import { env } from '../../config/env.js';
 import { logger } from '../logging/logger.js';
 import { EmailProviderFactory } from './email-provider.factory.js';
 import type { EmailMessage } from './email.types.js';
-import { EmailDeliveryError } from './email.types.js';
+import { EmailDeliveryError, sanitizeSubjectForLog } from './email.types.js';
 
 export interface SendMailOptions {
   to: string;
@@ -212,7 +212,7 @@ export class EmailService {
               event: 'email.sent',
               provider: providerName,
               to: options.to,
-              subject: options.subject,
+              subject: sanitizeSubjectForLog(options.subject),
               messageId: result.messageId,
               attempts: attempt,
             },
@@ -268,7 +268,7 @@ export class EmailService {
         event: 'email.error',
         provider: providerName,
         to: options.to,
-        subject: options.subject,
+        subject: sanitizeSubjectForLog(options.subject),
         attempts: attempt,
         err: errMsg,
       },

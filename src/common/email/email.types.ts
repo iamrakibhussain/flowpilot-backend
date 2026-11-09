@@ -53,3 +53,23 @@ export interface EmailProvider {
   send(message: EmailMessage): Promise<EmailSendResult>;
   verifyConnection?(): Promise<{ ok: boolean; error?: string; latencyMs?: number }>;
 }
+
+/**
+ * Redacts sensitive tokens, verification OTPs, and secrets from email subjects before logging.
+ * Prevents credential or token leakage into server stdout or log aggregation systems.
+ */
+export function sanitizeSubjectForLog(subject?: string): string {
+  if (!subject || typeof subject !== 'string') return '';
+  let sanitized = subject;
+  // Redact 6-digit numeric OTPs (standard FlowPilot email verification codes)
+  sanitized = sanitized.replace(/\b\d{6}\b/g, '[REDACTED_CODE]');
+  // If the subject contains verification, OTP, or PIN keywords, redact any numeric sequence of 4-8 digits
+  if (/verification|verify|code|otp|pin|token/i.test(sanitized)) {
+    sanitized = sanitized.replace(/\b\d{4,8}\b/g, '[REDACTED_CODE]');
+  }
+  // Redact key-value secrets in URL query-like patterns (e.g. token=xyz, code=123)
+  sanitized = sanitized.replace(/(token|code|key|secret|auth)=([^\s&]+)/gi, '$1=[REDACTED]');
+  // Redact hex or high-entropy tokens of 24+ characters
+  sanitized = sanitized.replace(/\b[0-9a-fA-F]{24,}\b/g, '[REDACTED_TOKEN]');
+  return sanitized;
+}

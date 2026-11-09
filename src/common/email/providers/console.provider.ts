@@ -1,4 +1,9 @@
-import { EmailProvider, EmailMessage, EmailSendResult } from '../email.types.js';
+import {
+  EmailProvider,
+  EmailMessage,
+  EmailSendResult,
+  sanitizeSubjectForLog,
+} from '../email.types.js';
 import { logger } from '../../logging/logger.js';
 
 export class ConsoleSimulationProvider implements EmailProvider {
@@ -14,7 +19,7 @@ export class ConsoleSimulationProvider implements EmailProvider {
         provider: this.name,
         messageId: simulatedId,
         to: message.to,
-        subject: message.subject,
+        subject: sanitizeSubjectForLog(message.subject),
         hasAttachments: Boolean(message.attachments && message.attachments.length > 0),
         correlationId: message.correlationId,
       },

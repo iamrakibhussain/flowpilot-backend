@@ -1,0 +1,52 @@
+services:
+  - type: web
+    name: flowpilot-backend
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci && npx prisma generate && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: HOST
+        value: 0.0.0.0
+      - key: TRUST_PROXY
+        value: '1'
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: COOKIE_SECRET
+        generateValue: true
+      - key: COOKIE_SAME_SITE
+        value: lax
+      - key: SESSION_EXPIRY_DAYS
+        value: 7
+      - key: LOG_LEVEL
+        value: info
+      - key: EMAIL_PROVIDER
+        value: console
+      - key: STORAGE_PROVIDER
+        value: supabase
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: STORAGE_BUCKET_PUBLIC
+        value: flowpilot-public
+      - key: STORAGE_BUCKET_PRIVATE
+        value: flowpilot-private
+      - key: STORAGE_SIGNED_URL_EXPIRY_SECONDS
+        value: 900
+      - key: STORAGE_SIGNING_SECRET
+        generateValue: true
+      - key: ENABLE_BACKGROUND_JOBS
+        value: 'false'
