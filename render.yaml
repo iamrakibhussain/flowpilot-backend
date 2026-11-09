@@ -15,7 +15,7 @@ services:
       - key: HOST
         value: 0.0.0.0
       - key: TRUST_PROXY
-        value: '1'
+        value: 'true'
       - key: DATABASE_URL
         sync: false
       - key: DIRECT_URL

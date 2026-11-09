@@ -60,6 +60,10 @@ export function getRateLimitOptions(): Partial<RateLimitOptions> {
     max: isDev ? 10000 : env.RATE_LIMIT_MAX_REQUESTS,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
+    skip: (req) => {
+      const url = req.originalUrl || req.url || req.path || '';
+      return url.includes('/health');
+    },
     message: {
       success: false,
       error: {
@@ -75,7 +79,7 @@ export function getAuthRateLimitOptions(): Partial<RateLimitOptions> {
   const isDev = env.NODE_ENV === 'development';
   return {
     windowMs: 15 * 60 * 1000, // 15 minutes window
-    max: isDev ? 1000 : 15, // Generous in development, strict in production
+    max: isDev ? 1000 : 30, // Generous in development, reasonable in production
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: {
@@ -93,7 +97,7 @@ export function getEmailDispatchRateLimitOptions(): Partial<RateLimitOptions> {
   const isDev = env.NODE_ENV === 'development';
   return {
     windowMs: 15 * 60 * 1000, // 15 minutes window
-    max: isDev ? 100 : 5, // Maximum 5 email dispatches in production to prevent spam
+    max: isDev ? 100 : 30, // Generous in development, reasonable in production
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: {
