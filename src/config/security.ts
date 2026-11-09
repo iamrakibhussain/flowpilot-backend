@@ -17,7 +17,7 @@ export function parseTrustProxy(val: string): boolean | number | string {
 export function getAllowedOrigins(allowedOriginsString = env.CORS_ORIGIN): string[] {
   return allowedOriginsString
     .split(',')
-    .map((origin) => origin.trim())
+    .map((origin) => origin.trim().replace(/\/+$/, ''))
     .filter((origin) => origin.length > 0);
 }
 
