@@ -183,10 +183,11 @@ export function getPublicQuoteRateLimitOptions(): Partial<RateLimitOptions> {
 
 export function getSessionCookieOptions(): CookieOptions {
   const isProd = env.NODE_ENV === 'production';
+  const sameSite = env.COOKIE_SAME_SITE || (isProd ? 'strict' : 'lax');
   return {
     httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? 'strict' : 'lax',
+    secure: sameSite === 'none' ? true : isProd,
+    sameSite,
     path: '/',
     maxAge: env.SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
   };
@@ -194,10 +195,11 @@ export function getSessionCookieOptions(): CookieOptions {
 
 export function getClearSessionCookieOptions(): CookieOptions {
   const isProd = env.NODE_ENV === 'production';
+  const sameSite = env.COOKIE_SAME_SITE || (isProd ? 'strict' : 'lax');
   return {
     httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? 'strict' : 'lax',
+    secure: sameSite === 'none' ? true : isProd,
+    sameSite,
     path: '/',
   };
 }

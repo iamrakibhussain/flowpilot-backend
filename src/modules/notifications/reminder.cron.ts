@@ -470,7 +470,13 @@ export async function runReminderCheckNow(targetOrgId?: string): Promise<Reminde
  * Initializes a background reminder timer running every 15 minutes in production/server runtime.
  */
 export function initReminderCron(): NodeJS.Timeout | null {
-  if (process.env.NODE_ENV === 'test') {
+  if (process.env.NODE_ENV === 'test' || env.ENABLE_BACKGROUND_JOBS === false) {
+    if (env.ENABLE_BACKGROUND_JOBS === false) {
+      logger.info(
+        { event: 'reminders.cron_disabled' },
+        'Automated communications & dunning scheduler disabled via ENABLE_BACKGROUND_JOBS',
+      );
+    }
     return null;
   }
 

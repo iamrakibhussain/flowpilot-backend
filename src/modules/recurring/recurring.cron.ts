@@ -1,5 +1,6 @@
 import { RecurringService } from './recurring.service.js';
 import { logger } from '../../common/logging/logger.js';
+import { env } from '../../config/env.js';
 
 let isRecurringCronRunning = false;
 
@@ -47,7 +48,13 @@ export async function runRecurringBillingNow(): Promise<RecurringBillingRunResul
  * Initialize background cron runner for recurring invoicing (every 15 minutes).
  */
 export function initRecurringBillingCron(): NodeJS.Timeout | null {
-  if (process.env.NODE_ENV === 'test') {
+  if (process.env.NODE_ENV === 'test' || env.ENABLE_BACKGROUND_JOBS === false) {
+    if (env.ENABLE_BACKGROUND_JOBS === false) {
+      logger.info(
+        { event: 'recurring_billing.cron_disabled' },
+        'Automated recurring billing engine scheduler disabled via ENABLE_BACKGROUND_JOBS',
+      );
+    }
     return null;
   }
 

@@ -13,48 +13,79 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('Starting FlowPilot database seed...');
 
-  let organizations = await prisma.organization.findMany();
-  if (organizations.length === 0) {
-    console.log('No organizations found. Initializing FlowPilot Demo Workspace & Administrator...');
-    const passwordHash = await hashPassword('Admin1234!');
-    const demoUser = await prisma.user.create({
-      data: {
-        email: 'admin@flowpilot.internal',
-        name: 'Alex Mercer',
-        passwordHash,
-        status: 'ACTIVE',
-        emailVerifiedAt: new Date(),
-      },
-    });
+  // 1. Ensure Demo Administrator and Demo Workspace exist safely
+  let demoUser = await prisma.user.findUnique({
+    where: { email: 'admin@flowpilot.internal' },
+  });
 
-    const demoOrg = await prisma.organization.create({
+  if (!demoUser) {
+    const seedAdminPassword = process.env.SEED_ADMIN_PASSWORD || process.env.ADMIN_INITIAL_PASSWORD;
+
+    if (!seedAdminPassword || seedAdminPassword.trim().length < 8) {
+      console.log(
+        'Notice: SEED_ADMIN_PASSWORD environment variable not set or shorter than 8 characters. Skipping administrator user creation.',
+      );
+    } else {
+      console.log('Initializing FlowPilot Administrator (admin@flowpilot.internal)...');
+      const passwordHash = await hashPassword(seedAdminPassword.trim());
+      demoUser = await prisma.user.create({
+        data: {
+          email: 'admin@flowpilot.internal',
+          name: 'Alex Mercer',
+          passwordHash,
+          status: 'ACTIVE',
+          emailVerifiedAt: new Date(),
+        },
+      });
+      console.log('Administrator user initialized successfully.');
+    }
+  } else {
+    console.log(
+      'Administrator user (admin@flowpilot.internal) already exists. Preserving existing credentials.',
+    );
+  }
+
+  let demoOrg = await prisma.organization.findFirst({
+    where: { slug: 'flowpilot-global' },
+  });
+  if (!demoOrg) {
+    console.log('Initializing FlowPilot Demo Workspace ("FlowPilot Global Operations")...');
+    demoOrg = await prisma.organization.create({
       data: {
         name: 'FlowPilot Global Operations',
         slug: 'flowpilot-global',
         status: 'ACTIVE',
       },
     });
-
-    await prisma.membership.create({
-      data: {
-        userId: demoUser.id,
-        organizationId: demoOrg.id,
-        role: 'OWNER',
-      },
-    });
-
-    organizations = [demoOrg];
+  } else {
     console.log(
-      'Created Demo Workspace: "FlowPilot Global Operations" (User: admin@flowpilot.internal / Admin1234!)',
+      'Workspace "FlowPilot Global Operations" already exists. Preserving existing workspace.',
     );
   }
 
-  console.log(
-    `Found ${organizations.length} organization(s). Seeding core business operations for each...`,
-  );
+  if (demoUser && demoOrg) {
+    const existingMembership = await prisma.membership.findFirst({
+      where: { userId: demoUser.id, organizationId: demoOrg.id },
+    });
+    if (!existingMembership) {
+      await prisma.membership.create({
+        data: {
+          userId: demoUser.id,
+          organizationId: demoOrg.id,
+          role: 'OWNER',
+        },
+      });
+      console.log('Assigned OWNER membership for administrator in "FlowPilot Global Operations".');
+    }
+  }
 
-  for (const org of organizations) {
-    console.log(`Seeding data for organization: "${org.name}" (${org.slug})...`);
+  // Strict multi-tenant isolation guard: Only seed business operations into the demo workspace
+  const targetOrgs = demoOrg ? [demoOrg] : [];
+
+  console.log(`Targeting ${targetOrgs.length} workspace(s) for demo operations seeding...`);
+
+  for (const org of targetOrgs) {
+    console.log(`Seeding business operations for workspace: "${org.name}" (${org.slug})...`);
 
     // 1. Services Catalog
     const serviceData = [
