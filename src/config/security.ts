@@ -97,7 +97,7 @@ export function getEmailDispatchRateLimitOptions(): Partial<RateLimitOptions> {
   const isDev = env.NODE_ENV === 'development';
   return {
     windowMs: 15 * 60 * 1000, // 15 minutes window
-    max: isDev ? 100 : 30, // Generous in development, reasonable in production
+    max: isDev ? 100 : 5, // Maximum 5 email dispatches in production to prevent spam
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: {
