@@ -64,6 +64,36 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
     return;
   }
 
+  // Handle malformed JSON parser errors originating from express.json() / body-parser
+  const isMalformedJson =
+    err instanceof SyntaxError &&
+    (('status' in err && (err as { status?: unknown }).status === 400) ||
+      ('statusCode' in err && (err as { statusCode?: unknown }).statusCode === 400)) &&
+    ('body' in err || (err as { type?: unknown }).type === 'entity.parse.failed');
+
+  if (isMalformedJson) {
+    logger.warn(
+      {
+        requestId,
+        method: req.method,
+        url: req.originalUrl,
+        reason: 'Malformed JSON payload in request body',
+      },
+      'Client sent malformed JSON payload',
+    );
+
+    sendError(
+      res,
+      {
+        code: 'BAD_REQUEST',
+        message: 'Malformed JSON payload in request body',
+        status: 400,
+      },
+      400,
+    );
+    return;
+  }
+
   // Unhandled / unexpected internal errors
   logger.error(
     {

@@ -154,13 +154,42 @@ export function createApp(options: AppOptions = { enableRateLimiting: true }): E
     app.use('/api/v1/staff/blocked-time', rateLimit(getSchedulingActionRateLimitOptions()));
   }
 
-  // 8. API v1 route mount
+  // 8. Standard platform health & availability probes (Render, load balancers, uptime monitors)
+  app.get('/', (_req, res) => {
+    res.status(200).json({
+      success: true,
+      service: 'flowpilot-backend',
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      docs: '/api/v1',
+    });
+  });
+
+  app.get('/health', (_req, res) => {
+    res.status(200).json({
+      success: true,
+      service: 'flowpilot-backend',
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  app.get('/healthz', (_req, res) => {
+    res.status(200).json({
+      success: true,
+      service: 'flowpilot-backend',
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // 9. API v1 route mount
   app.use('/api/v1', v1Routes);
 
-  // 9. 404 Route Not Found handler
+  // 10. 404 Route Not Found handler
   app.use(notFoundHandler);
 
-  // 10. Centralized Error Handler
+  // 11. Centralized Error Handler
   app.use(errorHandler);
 
   return app;

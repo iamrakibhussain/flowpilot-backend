@@ -45,4 +45,36 @@ describe('GET /api/v1/health (Operational Health Endpoints)', () => {
     expect(res.body.error.message).toBe('Database service is unavailable');
     expect(res.body.error.status).toBe(503);
   });
+
+  describe('Root and Platform Health Probes (Render / Monitoring Probes)', () => {
+    it('returns HTTP 200 on root GET / for container and platform probes', async () => {
+      const res = await request(app).get('/');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.service).toBe('flowpilot-backend');
+      expect(res.body.status).toBe('healthy');
+      expect(res.body.timestamp).toBeDefined();
+    });
+
+    it('returns HTTP 200 on standard GET /health endpoint', async () => {
+      const res = await request(app).get('/health');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.service).toBe('flowpilot-backend');
+      expect(res.body.status).toBe('healthy');
+      expect(res.body.timestamp).toBeDefined();
+    });
+
+    it('returns HTTP 200 on Kubernetes / cloud standard GET /healthz endpoint', async () => {
+      const res = await request(app).get('/healthz');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.service).toBe('flowpilot-backend');
+      expect(res.body.status).toBe('healthy');
+      expect(res.body.timestamp).toBeDefined();
+    });
+  });
 });
