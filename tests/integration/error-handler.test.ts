@@ -2,7 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import { getTestApp } from '../helpers/test-app.js';
 import { errorHandler } from '../../src/common/middleware/error-handler.js';
-import { BadRequestError, UnauthorizedError, NotFoundError } from '../../src/common/errors/app-error.js';
+import {
+  BadRequestError,
+  UnauthorizedError,
+  NotFoundError,
+} from '../../src/common/errors/app-error.js';
 import { prisma } from '../../src/database/prisma.js';
 import { ZodError, z } from 'zod';
 import type { Request, Response } from 'express';
@@ -184,7 +188,11 @@ describe('Centralized Error Handler & Malformed JSON Protection Suite', () => {
 
       expect(zodError).not.toBeNull();
       const mock = createMockRes();
-      const mockReq: Partial<Request> = { id: 'req-zod-1', method: 'POST', originalUrl: '/api/v1/test' };
+      const mockReq: Partial<Request> = {
+        id: 'req-zod-1',
+        method: 'POST',
+        originalUrl: '/api/v1/test',
+      };
 
       errorHandler(zodError!, mockReq as Request, mock.res, vi.fn());
 
@@ -194,9 +202,15 @@ describe('Centralized Error Handler & Malformed JSON Protection Suite', () => {
     });
 
     it('preserves CORS policy error handling and emits HTTP 403', () => {
-      const corsError = new Error("Origin 'https://evil.attacker.com' not allowed by FlowPilot CORS policy");
+      const corsError = new Error(
+        "Origin 'https://evil.attacker.com' not allowed by FlowPilot CORS policy",
+      );
       const mock = createMockRes();
-      const mockReq: Partial<Request> = { id: 'req-cors-1', method: 'POST', originalUrl: '/api/v1/auth/login' };
+      const mockReq: Partial<Request> = {
+        id: 'req-cors-1',
+        method: 'POST',
+        originalUrl: '/api/v1/auth/login',
+      };
 
       errorHandler(corsError, mockReq as Request, mock.res, vi.fn());
 
@@ -208,7 +222,11 @@ describe('Centralized Error Handler & Malformed JSON Protection Suite', () => {
     it('preserves generic unexpected internal errors and emits HTTP 500', () => {
       const genericError = new Error('Database socket unexpectedly disconnected');
       const mock = createMockRes();
-      const mockReq: Partial<Request> = { id: 'req-gen-1', method: 'POST', originalUrl: '/api/v1/projects' };
+      const mockReq: Partial<Request> = {
+        id: 'req-gen-1',
+        method: 'POST',
+        originalUrl: '/api/v1/projects',
+      };
 
       errorHandler(genericError, mockReq as Request, mock.res, vi.fn());
 
