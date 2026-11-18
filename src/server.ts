@@ -1,7 +1,7 @@
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './common/logging/logger.js';
-import { disconnectDatabase } from './database/prisma.js';
+import { prisma, disconnectDatabase } from './database/prisma.js';
 import { AuthService } from './modules/auth/auth.service.js';
 import { initReminderCron } from './modules/notifications/reminder.cron.js';
 import { initRecurringBillingCron } from './modules/recurring/recurring.cron.js';
@@ -19,6 +19,19 @@ const server = app.listen(env.PORT, env.HOST, () => {
     },
     'FlowPilot Backend Server successfully started',
   );
+
+  // Pre-warm database connection pool non-blockingly to eliminate cold-query latency on first user request
+  prisma
+    .$connect()
+    .then(() => {
+      logger.info('Database connection pool established');
+    })
+    .catch((err) => {
+      logger.warn(
+        { err: err instanceof Error ? err.message : String(err) },
+        'Background database connection pool initialization deferred',
+      );
+    });
 });
 
 // Periodic maintenance: Purge expired tokens and sessions (runs every hour when background jobs enabled)

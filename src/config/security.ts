@@ -62,7 +62,7 @@ export function getRateLimitOptions(): Partial<RateLimitOptions> {
     legacyHeaders: false,
     skip: (req) => {
       const url = req.originalUrl || req.url || req.path || '';
-      return url.includes('/health');
+      return url.includes('/health') || url === '/' || url.startsWith('/healthz');
     },
     message: {
       success: false,
